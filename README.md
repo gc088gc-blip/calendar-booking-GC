@@ -1,6 +1,6 @@
 # 一個人的行事曆與預約系統
 
-**▶︎ [線上試玩（不用安裝，不會碰到你的 Google 帳號）](https://<你的帳號>.github.io/calendar-booking-gas/demo/)**
+**▶︎ [線上試玩（不用安裝，不會碰到你的 Google 帳號）](https://<gc088gc.github.io/calendar-booking-gas/demo/)**
 
 用 Google Apps Script 做的個人排程工具：**自己的行程分類管理**＋**給別人預約你時間的網頁**。
 不用伺服器、不用資料庫、不用付費，全部跑在你自己的 Google 帳號裡：行程存在 Google 日曆，設定和預約紀錄存在 Google 試算表。
