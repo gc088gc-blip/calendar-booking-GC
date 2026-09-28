@@ -1,0 +1,168 @@
+<title>行事曆與預約系統・試玩</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap">
+<style>
+  :root {
+    --ground: #e7e3db; --ink: #1d1c1a; --muted: #6f6b64; --line: #d6d1c7; --paper: #f6f5f2; --card: #ffffff;
+    --orange: #cc7433; --blue: #4f7fd6;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--ground); color: var(--ink); font-family: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif; }
+  .demo { max-width: 1080px; margin: 0 auto; padding-inline: 16px; padding-block: 14px 20px; display: flex; flex-direction: column; gap: 10px; }
+  .top { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+  .brand { display: flex; align-items: baseline; gap: 8px; }
+  .brand b { font-size: 17px; letter-spacing: .5px; }
+  .brand span { font-size: 11px; font-weight: 700; letter-spacing: 1.5px; color: var(--orange); border: 1.5px solid var(--orange); border-radius: 5px; padding: 1px 6px; }
+  .tabs { display: flex; gap: 4px; background: #d9d4ca; border-radius: 12px; padding: 4px; flex-wrap: wrap; }
+  .tabs button { border: 0; background: transparent; border-radius: 9px; padding: 8px 14px; font: inherit; font-size: 14px; color: var(--muted); cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+  .tabs button[aria-selected="true"] { background: var(--card); color: var(--ink); font-weight: 700; box-shadow: 0 1px 2px rgba(29,28,26,.1); }
+  .tabs button:focus-visible, .reset:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+  .badge { min-width: 18px; height: 18px; border-radius: 9px; background: var(--orange); color: #fff; font-size: 11px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; padding: 0 5px; font-variant-numeric: tabular-nums; }
+  .badge:empty { display: none; }
+  .reset { margin-left: auto; border: 1.5px solid var(--line); background: transparent; color: var(--muted); border-radius: 10px; padding: 7px 12px; font: inherit; font-size: 13px; cursor: pointer; }
+  .note { margin: 0; font-size: 12.5px; color: var(--muted); line-height: 1.6; max-width: 70ch; }
+  .note b { color: var(--ink); font-weight: 500; }
+  .stage { display: flex; justify-content: center; }
+  .phone { width: min(420px, 100%); height: max(640px, calc(100dvh - 130px)); border-radius: 30px; overflow: hidden; background: var(--paper); border: 1px solid var(--line); box-shadow: 0 18px 40px -18px rgba(29,28,26,.35); }
+  .phone iframe { width: 100%; height: 100%; border: 0; display: block; background: var(--paper); }
+  .mail { width: min(560px, 100%); display: flex; flex-direction: column; gap: 10px; }
+  .mail h2 { margin: 6px 0 0; font-size: 18px; text-wrap: balance; }
+  .mail .sub { font-size: 12.5px; color: var(--muted); margin: 0; }
+  .letter { background: var(--card); border-radius: 12px; border: 1px solid var(--line); padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; }
+  .letter .meta { font-size: 12px; color: var(--muted); display: flex; justify-content: space-between; gap: 10px; font-variant-numeric: tabular-nums; }
+  .letter .subj { font-size: 15px; font-weight: 700; line-height: 1.4; }
+  .mailhtml { border-top: 1px solid #efece6; padding-top: 8px; margin: 0 -16px -14px; }
+  .mailhtml a { pointer-events: none; }
+  .letter .body { font-size: 13.5px; line-height: 1.7; white-space: pre-line; border-top: 1px solid #efece6; padding-top: 8px; }
+  .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--ink); color: #fff; padding: 10px 16px; border-radius: 10px; font-size: 14px; z-index: 9; max-width: 90vw; text-align: center; }
+  @media (max-width: 520px) {
+    .demo { padding-inline: 10px; }
+    .phone { border-radius: 18px; height: max(600px, calc(100dvh - 150px)); }
+    .reset { margin-left: 0; }
+  }
+</style>
+
+<div class="demo">
+  <header class="top">
+    <div class="brand"><b>行事曆與預約</b><span>試玩版</span></div>
+    <nav class="tabs" role="tablist" aria-label="切換畫面">
+      <button id="t_admin" role="tab" aria-selected="true" data-v="admin">後台</button>
+      <button id="t_friend" role="tab" aria-selected="false" data-v="friend">朋友連結</button>
+      <button id="t_public" role="tab" aria-selected="false" data-v="public">新朋友連結</button>
+      <button id="t_share" role="tab" aria-selected="false" data-v="share">分享連結</button>
+      <button id="t_mail" role="tab" aria-selected="false" data-v="mail">通知信 <span class="badge" id="badge"></span></button>
+    </nav>
+    <button class="reset" id="reset">重設示範資料</button>
+  </header>
+  <p class="note">這是用示範資料跑的完整流程，<b>不會碰到你真的 Google 日曆</b>。在朋友或新朋友連結約時間，切回後台就看得到；「分享連結」是別人看到的唯讀行程；「通知信」是你會收到的信。重新整理頁面就回到示範資料。</p>
+  <main class="stage" id="stage"></main>
+</div>
+<div id="toast"></div>
+
+<script>
+/*__BUILD__*/
+
+var B, current = 'admin';
+function pad2(n) { return (n < 10 ? '0' : '') + n; }
+
+function seed() {
+  B = bootBackend();
+  var a = B.api;
+  a.setup();
+  var cfg = a.getConfig_();
+  cfg.publicUrl = 'https://script.google.com/macros/s/DEMO/exec';
+  a.saveConfig_(cfg);
+  var C = cfg.calendars.map(function (c) { return c.id; });
+  var today = a.ymdOf_(new Date()), add = a.addDaysYmd_;
+  for (var i = 0; i <= 28; i++) {            // 示範用開放時段：平日晚上、週一四多開線上、週六白天只給朋友
+    var dd = add(today, i), wd = a.dateOf_(dd).getDay(), r = [];
+    if (wd >= 1 && wd <= 5) r.push({ s: '19:00', e: '22:00', loc: 'both', aud: 'all' });
+    if (wd === 1 || wd === 4) r.push({ s: '22:00', e: '23:00', loc: 'online', aud: 'public' });
+    if (wd === 6) r.push({ s: '10:00', e: '18:00', loc: 'both', aud: 'friend' });
+    if (r.length) cfg.open[dd] = r;
+  }
+  cfg.people = ['陳大文'];
+  cfg.familyCal = 'family-demo@group.calendar.google.com'; cfg.familyName = '家庭';
+  cfg.me = { name: '小安', brand: '', tagline: '職涯、實習、轉職都可以問' };
+  cfg.notes = {}; cfg.notes[today.slice(0, 7)] = { f: '這個月大多在台北，平日晚上比較方便。\n想約白天先跟我說一聲。', p: '這個月新朋友只接線上，一次 30 分鐘。' };
+  cfg.shareCals = [C[1], C[2]];
+  a.saveConfig_(cfg);
+  var mon = add(today, -((a.dateOf_(today).getDay() + 6) % 7));
+  a.insertEvent_(C[3], { title: '上班', ymd: mon, s: 540, e: 1080, repeat: [1, 2, 3, 4, 5] });
+  a.insertEvent_(C[2], { title: '整理簡報', ymd: add(today, 3), s: 1200, e: 1290, tags: [C[1]] });
+  a.insertEvent_(C[1], { title: '跟學長聊合作', ymd: add(today, 2), s: 1170, e: 1260, who: '學長', note: '帶上次的提案簡報\n問他對收費方式的看法' });
+  a.insertEvent_(C[0], { title: '朋友吃飯', ymd: add(today, 6), s: 1080, e: 1260, loc: '星巴克', who: '朋友', note: '記得先訂位' });
+  a.insertEvent_(C[0], { title: '跟陳大文打球', ymd: add(today, 9), s: 600, e: 720, who: '陳大文' });
+  var fam = a.insertEvent_('family-demo@group.calendar.google.com', { title: '家庭聚會', ymd: add(today, 8), allDay: true });
+  a.insertEvent_(C[0], { title: '家庭聚會', ymd: add(today, 8), allDay: true, who: '家人', famId: fam.id });
+  a.adminBoardSave([{ t: '月底前把官網改版上線' }, { t: '想約：阿杰、Karen 的學姊、陳大文' }, { t: '年底前換護照', d: true }, { t: '下期主題：勞動市場、利率走勢' }]);
+  var now = Date.now();
+  function firstSlot(aud, dur, from) {
+    var days = a.computeDays_(cfg, aud, add(today, from), add(today, 30), a.busy_(cfg, now, now + 32 * 86400000), now);
+    for (var i = 0; i < days.length; i++) {
+      var segs = days[i].segs || [];
+      for (var j = 0; j < segs.length; j++) if (segs[j].e - segs[j].s >= dur && segs[j].loc === 'both') return { date: days[i].date, start: segs[j].s };
+    }
+  }
+  try {
+    var p = firstSlot('public', 30, 2);
+    if (p) a.apiBook({ aud: 'public', k: '', date: p.date, start: p.start, end: p.start + 30, name: 'Karen', contact: 'karen@example.com', purpose: '想聊轉職到資產管理', locMode: 'online' });
+    var p2 = firstSlot('public', 60, 5);
+    if (p2) a.apiBook({ aud: 'public', k: '', date: p2.date, start: p2.start, end: p2.start + 60, name: '林同學', contact: 'lin2@example.com', purpose: '想問怎麼準備面試', locMode: 'online' });
+    var f = firstSlot('friend', 60, 1);
+    if (f) a.apiBook({ aud: 'friend', k: cfg.audiences.friend.token, date: f.date, start: f.start, end: f.start + 60, name: '小明', contact: '', purpose: '吃飯聊近況', locMode: 'inperson', place: '信義區星巴克' });
+    var d = new Date(); d.setMonth(d.getMonth() + 2);
+    a.apiRequestMonth({ aud: 'friend', k: cfg.audiences.friend.token, month: d.getFullYear() + '-' + pad2(d.getMonth() + 1), name: '阿杰', contact: '', purpose: '想找你聊創業的事', dur: '1 小時', locPref: '實體' });
+    d.setMonth(d.getMonth() + 1);
+    a.apiRequestMonth({ aud: 'public', k: '', month: d.getFullYear() + '-' + pad2(d.getMonth() + 1), name: '林同學', contact: 'lin@example.com', purpose: '大三，想問金融業實習', dur: '30 分鐘', locPref: '線上' });
+  } catch (e) { console.warn(e); }
+  badge();
+}
+
+function badge() { var n = B.G.st.mails.length; document.getElementById('badge').textContent = n ? String(n) : ''; }
+function toast(m) { var t = document.getElementById('toast'); t.innerHTML = '<div class="toast">' + m + '</div>'; clearTimeout(toast.t); toast.t = setTimeout(function () { t.innerHTML = ''; }, 2600); }
+function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+
+function show(v) {
+  current = v;
+  ['admin', 'friend', 'public', 'share', 'mail'].forEach(function (k) { document.getElementById('t_' + k).setAttribute('aria-selected', String(k === v)); });
+  var stage = document.getElementById('stage');
+  if (v === 'mail') {
+    var mails = B.G.st.mails;
+    stage.innerHTML = '<section class="mail"><h2>收到的通知信</h2><p class="sub">每筆預約或「只約月份」留言都會寄一封。最新的在最上面。</p>' +
+      (mails.length ? mails.map(function (m) {
+        return '<article class="letter"><div class="meta"><span>寄給 ' + esc(m.to) + '</span><span>' + pad2(m.at.getHours()) + ':' + pad2(m.at.getMinutes()) + '</span></div>' +
+          '<div class="subj">' + esc(m.subject) + '</div>' + (m.html ? '<div class="mailhtml">' + m.html + '</div>' : '<div class="body">' + esc(m.body) + '</div>') + '</article>';
+      }).join('') : '<p class="sub">還沒有信。</p>') + '</section>';
+    return;
+  }
+  var cfg = B.api.getConfig_(), html;
+  if (v === 'admin') html = TPL_ADMIN;
+  else if (v === 'share') html = TPL_SHARE.replace('<?!= boot ?>', JSON.stringify((function(){var sb=B.api.shareBoot_(cfg); sb.here=cfg.publicUrl+'?v=s'; return sb;})()).replace(/</g, '\\u003c'));
+  else { var bb = B.api.bookBoot_(cfg, v, v === 'friend' ? cfg.audiences.friend.token : ''); bb.here = cfg.publicUrl + (v === 'friend' ? '?v=f' : ''); html = TPL_BOOK.replace('<?!= boot ?>', JSON.stringify(bb).replace(/</g, '\\u003c')); }
+  stage.innerHTML = '<div class="phone"><iframe id="frame" title="' + (v === 'admin' ? '後台' : v === 'friend' ? '朋友預約頁' : v === 'share' ? '分享的行程' : '新朋友預約頁') + '"></iframe></div>';
+  document.getElementById('frame').srcdoc = html;
+}
+
+window.addEventListener('message', function (e) {
+  var d = e.data;
+  if (d && d.__gcReq) {
+    setTimeout(function () {
+      var res;
+      try { res = { __gcRes: 1, id: d.id, ok: true, v: JSON.parse(JSON.stringify(B.api[d.fn].apply(null, d.args) || null)) }; }
+      catch (err) { res = { __gcRes: 1, id: d.id, ok: false, err: err.message }; }
+      e.source.postMessage(res, '*');
+      badge();
+    }, 160);
+  }
+  if (d && d.__gcNav) {
+    if (/macros\/s\/DEMO\/exec/.test(d.href)) show(/v=f/.test(d.href) ? 'friend' : /v=s/.test(d.href) ? 'share' : 'public');
+    else toast('試玩版不會打開外部連結');
+  }
+});
+
+document.querySelectorAll('.tabs button').forEach(function (b) { b.addEventListener('click', function () { show(b.dataset.v); }); });
+document.getElementById('reset').addEventListener('click', function () { seed(); show(current); toast('已回到示範資料'); });
+
+seed();
+show('admin');
+</script>

@@ -1,0 +1,102 @@
+<style>
+  :root {
+    --bg: #f6f5f2; --card: #ffffff; --ink: #1d1c1a; --muted: #77736c; --faint: #9a968e; --line: #e4e1da; --line2: #efece6;
+    --accent: #1d1c1a; --accent-ink: #ffffff; --accent-soft: #e9e6df;
+    --ok: #3f9a5e; --online: #3b66b5; --warn-bg: #fdf1d9; --warn: #9a6a12; --danger: #b3261e;
+  }
+  body.public { --bg: #fbf7f2; --accent: #cc7433; --accent-soft: #efe6db; --line: #efe3d6; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; padding: 0; }
+  body { min-height: 100vh; }     /* 手機 App 內建瀏覽器有時會把高度壓成 0，整頁就變空白 */
+  body { background: var(--bg); color: var(--ink); font-family: -apple-system, BlinkMacSystemFont, "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", system-ui, sans-serif; font-size: 15px; line-height: 1.45; }
+  a { color: #cc7433; } a:hover { color: #a95a20; }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  .wrap { max-width: 520px; margin: 0 auto; padding: 20px 16px 110px; }
+  .row { display: flex; align-items: center; gap: 8px; }
+  .between { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .col { display: flex; flex-direction: column; gap: 8px; }
+  .muted { color: var(--muted); } .faint { color: var(--faint); } .small { font-size: 12px; } .tiny { font-size: 11px; }
+  .h1 { font-size: 22px; font-weight: 700; } .h2 { font-size: 17px; font-weight: 700; } .b { font-weight: 700; }
+  .card { background: var(--card); border-radius: 14px; padding: 14px; }
+  .list { background: var(--card); border-radius: 14px; padding: 0 14px; }
+  .list > .li { display: flex; align-items: center; gap: 10px; min-height: 48px; border-bottom: 1px solid var(--line2); }
+  .list > .li:last-child { border-bottom: 0; }
+  .sec { margin-top: 18px; display: flex; flex-direction: column; gap: 8px; }
+  .label { font-size: 13px; color: var(--muted); }
+  .flabel { font-size: 14px; font-weight: 700; }
+
+  .btn { border: 0; border-radius: 12px; min-height: 48px; padding: 0 16px; background: var(--accent); color: var(--accent-ink); font-weight: 700; font-size: 15px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+  .btn.block { width: 100%; }
+  .btn.ghost { background: transparent; color: var(--ink); border: 1.5px solid var(--ink); }
+  .btn.soft { background: var(--card); color: var(--ink); border: 1.5px solid var(--line); font-weight: 500; }
+  .btn.danger { background: transparent; color: var(--danger); border: 1.5px solid #e8c4c1; }
+  .btn.sm { min-height: 36px; padding: 0 12px; font-size: 13px; border-radius: 10px; }
+  .btn:disabled { opacity: .45; cursor: default; }
+  .link { background: none; border: 0; padding: 4px; color: var(--muted); font-size: 13px; cursor: pointer; text-decoration: underline; }
+
+  .chips { display: flex; gap: 8px; flex-wrap: wrap; }
+  .chip { border: 1.5px solid var(--line); background: var(--card); border-radius: 999px; padding: 8px 14px; font-size: 13px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+  .chip.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 500; }
+  .chip.dashed { border-style: dashed; color: var(--muted); }
+  .dot { width: 8px; height: 8px; border-radius: 4px; flex-shrink: 0; display: inline-block; }
+
+  .seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; background: var(--accent-soft); border-radius: 12px; padding: 4px; }
+  .seg button { border: 0; background: transparent; border-radius: 9px; min-height: 38px; font-size: 14px; color: var(--muted); cursor: pointer; }
+  .seg button.on { background: var(--card); color: var(--ink); font-weight: 700; box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+
+  .field { width: 100%; min-height: 48px; border-radius: 12px; background: var(--card); border: 1.5px solid var(--line); padding: 10px 14px; font-size: 16px; outline: none; }
+  .field:focus { border-color: var(--ink); }
+  textarea.field { min-height: 88px; resize: vertical; }
+  .field.sm { min-height: 40px; padding: 6px 10px; font-size: 15px; border-radius: 10px; }
+  input[type=time].field, input[type=date].field, input[type=number].field { -webkit-appearance: none; appearance: none; }
+
+  .cal7 { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 5px; }
+  .wkhead { text-align: center; font-size: 11px; color: var(--muted); }
+
+  .toast { position: fixed; left: 50%; bottom: 96px; transform: translateX(-50%); background: var(--ink); color: #fff; padding: 10px 16px; border-radius: 10px; font-size: 14px; z-index: 50; max-width: 90vw; text-align: center; }
+  .toast.err { background: var(--danger); }
+  .spin { padding: 40px 0; text-align: center; color: var(--muted); font-size: 14px; }
+
+  .sheet-bg { position: fixed; inset: 0; background: rgba(29,28,26,.4); z-index: 30; display: flex; align-items: flex-end; justify-content: center; }
+  .sheet { background: var(--bg); width: 100%; max-width: 520px; max-height: 92vh; overflow: auto; border-radius: 18px 18px 0 0; padding: 18px 16px 28px; }
+  .sheet .grab { width: 40px; height: 4px; border-radius: 2px; background: var(--line); margin: -6px auto 12px; }
+
+  .toggle { width: 42px; height: 24px; border-radius: 12px; background: #dcd8d0; position: relative; border: 0; cursor: pointer; flex-shrink: 0; }
+  .toggle::after { content: ""; position: absolute; left: 3px; top: 3px; width: 18px; height: 18px; border-radius: 9px; background: #fff; transition: left .15s; }
+  .toggle.on { background: var(--ink); }
+  .toggle.on::after { left: 21px; }
+
+  .tag { font-size: 11px; font-weight: 500; padding: 3px 8px; border-radius: 6px; white-space: nowrap; }
+  .tag.online { background: #e8effb; color: var(--online); }
+  .tag.both { background: #e5f3ea; color: #2f7a4a; }
+  .tag.warn { background: var(--warn-bg); color: var(--warn); }
+  .tag.gray { background: #efede8; color: var(--muted); }
+  .tag.okay { background: #e5f3ea; color: #2f7a4a; }
+  .tag.org { background: #fbeee4; color: #a95a20; }
+  svg.ic { width: 20px; height: 20px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+</style>
+<script>
+/* IG、Threads、FB、LINE 的內建瀏覽器常常擋掉 Google 的頁面，顯示一條可以用手機瀏覽器打開的提示 */
+(function () {
+  var ua = navigator.userAgent || '';
+  if (!/Instagram|Threads|FBAN|FBAV|FB_IAB|Line\/|MicroMessenger/i.test(ua)) return;
+  function bar() {
+    var here = (window.BOOT && BOOT.here) || '';
+    if (!here) return;
+    var ios = /iPhone|iPad|iPod/i.test(ua);
+    var d = document.createElement('div');
+    d.setAttribute('style', 'position:sticky;top:0;z-index:60;display:flex;gap:10px;align-items:center;background:#1d1c1a;color:#fff;font-size:13px;padding:10px 12px;line-height:1.4');
+    d.innerHTML = '<span style="flex:1">在這裡可能開不完整</span><button id="gcOpen" style="border:0;border-radius:8px;background:#fff;color:#1d1c1a;font:inherit;font-weight:700;font-size:13px;padding:7px 10px">用瀏覽器開啟</button>';
+    document.body.insertBefore(d, document.body.firstChild);
+    document.getElementById('gcOpen').onclick = function () {
+      if (ios) { location.href = 'x-safari-' + here; setTimeout(function () { copy(here); }, 700); }
+      else { location.href = 'intent://' + here.replace(/^https?:\/\//, '') + '#Intent;scheme=https;package=com.android.chrome;end'; setTimeout(function () { copy(here); }, 700); }
+    };
+    function copy(t) {
+      try { navigator.clipboard.writeText(t); } catch (e) {}
+      d.innerHTML = '<span style="flex:1">連結已複製，貼到 Chrome 或 Safari 打開</span>';
+    }
+  }
+  if (document.body) bar(); else document.addEventListener('DOMContentLoaded', bar);
+})();
+</script>

@@ -1,0 +1,12 @@
+const {makeEnv}=require('./mock'); const assert=require('assert');
+const {ctx,state}=makeEnv(); ctx.setup();
+const now=new Date('2026-09-11T10:00:00+08:00').getTime(); Date.now=()=>now;
+ctx.Calendar.Freebusy.query=q=>{const cal={};q.items.forEach(i=>{cal[i.id]={busy:(state.events[i.id]||[]).filter(e=>e.start.dateTime).map(e=>({start:e.start.dateTime+'+08:00',end:e.end.dateTime+'+08:00'}))}});return {calendars:cal};};
+ctx.adminSetOpen(['2026-10-12'],[{s:'19:00',e:'22:00',loc:'both',aud:'all'},{s:'22:00',e:'23:00',loc:'online',aud:'public'}]);
+let r=ctx.apiBook({aud:'public',k:'',date:'2026-10-12',start:1140,end:1290,name:'A',contact:'a@b.co',purpose:'聊',locMode:'online'});
+assert.equal(r.when,'10/12（一）19:00–21:30');
+assert.throws(()=>ctx.apiBook({aud:'public',k:'',date:'2026-10-12',start:1290,end:1350,name:'B',contact:'b@b.co',purpose:'x',locMode:'inperson',place:'x'}),/只開放線上/);
+assert.throws(()=>ctx.apiBook({aud:'public',k:'',date:'2026-10-12',start:1200,end:1260,name:'C',contact:'c@b.co',purpose:'x',locMode:'online'}),/約走/);
+assert.throws(()=>ctx.apiBook({aud:'public',k:'',date:'2026-10-12',start:1300,end:1320,name:'C',contact:'c@b.co',purpose:'x',locMode:'online'}),/時間錯誤/);
+const cfg=ctx.adminSaveAudience('friend',{minNoticeH:6}); assert.equal(cfg.audiences.friend.minNoticeH,6); assert(!('durations' in cfg.audiences.friend));
+console.log('TEST4 PASSED');

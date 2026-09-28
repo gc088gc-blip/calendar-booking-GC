@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <?!= include('Styles') ?>
+  <style>
+    .avatar { width: 44px; height: 44px; border-radius: 22px; background: var(--ink); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; flex-shrink: 0; }
+    .arrow { width: 36px; height: 36px; border-radius: 18px; border: 1px solid var(--line); background: var(--card); display: flex; align-items: center; justify-content: center; cursor: pointer; }
+    .arrow:disabled { opacity: .3; cursor: default; }
+    .calc { background: #fff; border-radius: 16px; padding: 12px 8px 10px; margin-top: 16px; }
+    .grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 3px; }
+    /* 用 div 不用 button：Safari 的 button 裡面彩色條會消失 */
+    .cell { display: block; min-width: 0; min-height: 78px; border-radius: 8px; padding: 3px 2px 4px; cursor: pointer; overflow: hidden; border: 1.5px solid transparent; }
+    .cell.sel { border-color: var(--ink); }
+    .cell.other { opacity: .3; }
+    .num { display: block; width: 20px; height: 20px; line-height: 20px; text-align: center; font-size: 12px; font-weight: 500; border-radius: 10px; margin: 0 0 2px 1px; }
+    .num.today { background: var(--ink); color: #fff; }
+    .num.red { color: #c0392b; } .num.today.red { background: #c0392b; color: #fff; }
+    .hol { display: block; font-size: 9px; line-height: 1.2; color: #c0392b; white-space: nowrap; overflow: hidden; margin: 0 0 2px 2px; }
+    .chip { display: block; width: 100%; font-size: 10px; line-height: 15px; height: 16px; padding: 0 3px; margin-bottom: 2px; border-radius: 4px; white-space: nowrap; overflow: hidden; font-weight: 500; }
+    .more { display: block; font-size: 9.5px; color: var(--muted); padding-left: 2px; }
+    .lg { display: flex; gap: 12px; flex-wrap: wrap; margin: 10px 4px 0; font-size: 12px; color: var(--muted); }
+    .lg span { display: inline-flex; align-items: center; gap: 5px; }
+    .secT { display: flex; align-items: baseline; justify-content: space-between; margin: 22px 2px 8px; }
+    .secT b { font-size: 17px; }
+    .agl { background: #fff; border-radius: 16px; overflow: hidden; }
+    .dh { padding: 12px 16px 4px; font-size: 14px; font-weight: 700; border-top: 1px solid var(--line2); display: flex; gap: 8px; align-items: center; }
+    .dh:first-child { border-top: 0; }
+    .dh .r { color: #c0392b; font-size: 12px; font-weight: 500; }
+    .it { display: flex; gap: 10px; padding: 6px 16px; align-items: flex-start; }
+    .it:last-child { padding-bottom: 12px; }
+    .it .tm { width: 92px; flex-shrink: 0; font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; padding-top: 1px; }
+    .it .bar { width: 3px; align-self: stretch; border-radius: 2px; flex-shrink: 0; }
+    .it .tt { flex: 1; min-width: 0; font-size: 15px; }
+    .none { padding: 18px 16px; font-size: 14px; color: var(--faint); }
+    .tbadge { font-size: 11px; font-weight: 700; background: var(--ink); color: #fff; border-radius: 6px; padding: 1px 7px; }
+  </style>
+</head>
+<body>
+<div class="wrap" id="app"></div>
+<?!= include('Cal') ?>
+<script>
+var BOOT = <?!= boot ?>;
+var WDN = ['日', '一', '二', '三', '四', '五', '六'];
+var ME = (BOOT.me && BOOT.me.name) || '我';
+var S = { ym: BOOT.today.slice(0, 7), sel: null, cache: {}, cals: null, err: '' };
+function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+function pad(n) { return (n < 10 ? '0' : '') + n; }
+function hm(m) { return pad(Math.floor(m / 60)) + ':' + pad(m % 60); }
+function dOf(s) { var a = s.split('-').map(Number); return new Date(a[0], a[1] - 1, a[2]); }
+function ymd(d) { return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
+function addD(s, n) { var d = dOf(s); d.setDate(d.getDate() + n); return ymd(d); }
+function ymAdd(ym, n) { var d = new Date(+ym.slice(0, 4), +ym.slice(5) - 1 + n, 1); return d.getFullYear() + '-' + pad(d.getMonth() + 1); }
+function md(s) { var d = dOf(s); return (d.getMonth() + 1) + '/' + d.getDate() + '（' + WDN[d.getDay()] + '）'; }
+function tint(hex) { var n = parseInt(hex.slice(1), 16); return 'rgba(' + (n >> 16) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',0.14)'; }
+function run(fn) {
+  var args = [].slice.call(arguments, 1);
+  return new Promise(function (ok, bad) { var r = google.script.run.withSuccessHandler(ok).withFailureHandler(function (e) { bad(e && e.message ? e : new Error(String(e))); }); r[fn].apply(r, args); });
+}
+var L = '<svg class="ic" viewBox="0 0 24 24" style="width:16px;height:16px"><path d="M15 6l-6 6 6 6"/></svg>';
+var R = '<svg class="ic" viewBox="0 0 24 24" style="width:16px;height:16px"><path d="M9 6l6 6-6 6"/></svg>';
+
+function put(ym, r) { S.cache[ym] = r.events; S.cals = r.calendars; }
+function load(ym) {
+  if (S.cache[ym]) return render();
+  render();
+  run('apiShare', BOOT.k, ym).then(function (r) { put(ym, r); render(); })
+    .catch(function (e) { S.err = e.message; render(); });
+}
+function on(day) { return (S.cache[S.ym] || []).filter(function (e) { return e.sd <= day && e.ed >= day; }); }
+function timeOf(e, day) { return e.allDay ? '整天' : (e.sd < day ? '　…' : hm(e.sm)) + '–' + (e.ed > day ? '…' : hm(e.em)); }
+
+function render() {
+  var ym = S.ym, list = S.cache[ym];
+  var h = '<div class="row" style="gap:12px"><div class="avatar">' + esc(ME.slice(0, 2)) + '</div><div class="col" style="gap:0"><div class="h1" style="font-size:20px">' + esc(ME) + ' 的行程</div><div class="small muted">唯讀 · 台北時間</div></div></div>';
+  if (S.err) { document.getElementById('app').innerHTML = h + '<div class="card" style="margin-top:16px">' + esc(S.err) + '</div>'; return; }
+  if (S.cals && !S.cals.length) { document.getElementById('app').innerHTML = h + '<div class="card small muted" style="margin-top:16px">目前沒有分享任何行事曆。</div>'; return; }
+
+  h += '<div class="calc"><div class="between" style="margin:0 4px 10px"><div class="h2">' + ym.slice(0, 4) + ' 年 ' + (+ym.slice(5)) + ' 月</div><div class="row" style="gap:6px">' +
+    '<button class="arrow" aria-label="上個月" ' + (ym <= BOOT.today.slice(0, 7) ? 'disabled' : '') + ' onclick="go(-1)">' + L + '</button>' +
+    '<button class="arrow" aria-label="下個月" ' + (ym >= BOOT.rangeEnd.slice(0, 7) ? 'disabled' : '') + ' onclick="go(1)">' + R + '</button></div></div>';
+  h += '<div class="grid" style="margin-bottom:4px">' + ['一', '二', '三', '四', '五', '六', '日'].map(function (w) { return '<div class="wkhead">' + w + '</div>'; }).join('') + '</div>';
+  if (!list) h += '<div class="spin">讀取中…</div>';
+  else {
+    var first = ym + '-01', start = addD(first, -((dOf(first).getDay() + 6) % 7));
+    var last = ymd(new Date(+ym.slice(0, 4), +ym.slice(5), 0)), end = addD(last, (7 - dOf(last).getDay()) % 7);
+    h += '<div class="grid">';
+    for (var d = start; d <= end; d = addD(d, 1)) {
+      var other = d.slice(0, 7) !== ym, ev = other ? [] : on(d), hol = GCCal.holiday(d), max = hol ? 2 : 3;
+      h += '<div role="button" tabindex="0" class="cell' + (other ? ' other' : '') + (S.sel === d ? ' sel' : '') + '" onclick="pick(\'' + d + '\')">' +
+        '<span class="num' + (d === BOOT.today ? ' today' : '') + (hol ? ' red' : '') + '">' + (+d.slice(8)) + '</span>' + (hol && !other ? '<span class="hol">' + esc(hol) + '</span>' : '') +
+        ev.slice(0, max).map(function (e) {
+          return '<span class="chip" style="' + (e.allDay ? 'background:' + e.color + ';color:#fff' : 'background:' + tint(e.color) + ';color:' + e.color + ';border-left:3px solid ' + e.color) + '">' + esc(e.title) + '</span>';
+        }).join('') + (ev.length > max ? '<span class="more">還有 ' + (ev.length - max) + ' 個</span>' : '') + '</div>';
+    }
+    h += '</div>';
+  }
+  h += '</div>';
+  if (S.cals && S.cals.length) h += '<div class="lg">' + S.cals.map(function (c) { return '<span><span class="dot" style="background:' + c.color + '"></span>' + esc(c.name) + '</span>'; }).join('') + '</div>';
+  if (list) h += S.sel ? dayList(S.sel) : upcoming();
+  document.getElementById('app').innerHTML = h;
+}
+
+/* 沒點日期時：列出這個月接下來的行程 */
+function upcoming() {
+  var ym = S.ym, isNow = ym === BOOT.today.slice(0, 7), from = isNow ? BOOT.today : ym + '-01';
+  var last = ymd(new Date(+ym.slice(0, 4), +ym.slice(5), 0)), h = '', n = 0;
+  for (var d = from; d <= last && n < 40; d = addD(d, 1)) {
+    var ev = on(d); if (!ev.length) continue;
+    h += dayRows(d, ev); n += ev.length;
+  }
+  return '<div class="secT"><b>' + (isNow ? '接下來' : (+ym.slice(5)) + ' 月的行程') + '</b><span class="small faint">點日期看單日</span></div>' +
+    '<div class="agl">' + (h || '<div class="none">這個月' + (isNow ? '接下來' : '') + '沒有行程</div>') + '</div>';
+}
+function dayList(day) {
+  var ev = on(day);
+  return '<div class="secT"><b>' + md(day) + '</b><button class="link" onclick="S.sel=null;render()">看全部 ›</button></div>' +
+    '<div class="agl">' + (ev.length ? dayRows(day, ev) : '<div class="none">這天沒有行程</div>') + '</div>';
+}
+function dayRows(day, ev) {
+  var hol = GCCal.holiday(day);
+  return '<div class="dh">' + md(day) + (day === BOOT.today ? '<span class="tbadge">今天</span>' : '') + (hol ? '<span class="r">' + esc(hol) + '</span>' : '') + '</div>' +
+    ev.map(function (e) { return '<div class="it"><span class="tm">' + timeOf(e, day) + '</span><span class="bar" style="background:' + e.color + '"></span><span class="tt">' + esc(e.title) + '</span></div>'; }).join('');
+}
+function go(n) { S.ym = ymAdd(S.ym, n); S.sel = null; load(S.ym); window.scrollTo(0, 0); }
+function pick(d) { if (d.slice(0, 7) !== S.ym) return; S.sel = S.sel === d ? null : d; render(); }
+
+if (BOOT.first && BOOT.first.ym === S.ym) { put(S.ym, BOOT.first.data); render(); } else load(S.ym);
+</script>
+</body>
+</html>

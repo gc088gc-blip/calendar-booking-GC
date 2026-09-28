@@ -1,0 +1,272 @@
+<script>
+/* 一句話新增解析器：把「週四晚上6-9朋友星巴克吃飯」拆成日期/時間/內容/地點/分類 */
+var GCParser = (function () {
+  var CN = { '零': 0, '一': 1, '二': 2, '兩': 2, '三': 3, '四': 4, '五': 5, '六': 6, '七': 7, '八': 8, '九': 9, '十': 10 };
+  var WD = { '日': 0, '天': 0, '一': 1, '二': 2, '三': 3, '四': 4, '五': 5, '六': 6 };
+  var PLACES = ['星巴克', '路易莎', 'cama', '麥當勞', '咖啡廳', '咖啡店', '辦公室', '家裡', '健身房', '圖書館', '學校', '餐廳'];
+  var PLACE_SUFFIX = /[一-龥A-Za-z0-9]{1,6}?(捷運站|車站|站|咖啡廳|咖啡館|餐廳|公園|夜市|大學|百貨|商場|分店|門市)/;
+
+  function pad(n) { return (n < 10 ? '0' : '') + n; }
+  function ymd(d) { return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
+  function addDays(d, n) { var x = new Date(d.getFullYear(), d.getMonth(), d.getDate()); x.setDate(x.getDate() + n); return x; }
+  function cnNum(s) {
+    if (/^\d+(\.\d+)?$/.test(s)) return parseFloat(s);
+    if (s === '十') return 10;
+    if (s.length === 2 && s[0] === '十') return 10 + CN[s[1]];
+    if (s.length === 2 && s[1] === '十') return CN[s[0]] * 10;
+    if (s.length === 3 && s[1] === '十') return CN[s[0]] * 10 + CN[s[2]];
+    return CN[s];
+  }
+  function normalize(t) {
+    return t.replace(/[０-９]/g, function (c) { return String.fromCharCode(c.charCodeAt(0) - 0xFEE0); })
+      .replace(/：/g, ':').replace(/[～~－—–]/g, '-').replace(/／/g, '/').replace(/＠/g, '@')
+      .replace(/周/g, '週').replace(/禮拜/g, '星期');
+  }
+  function WDV(c) { return /\d/.test(c) ? (+c) % 7 : WD[c]; }
+  function wdList(s) {
+    // 「一到五」「一、三、五」「六日」
+    var out = [];
+    s = s.replace(/[至\-]/g, '到');
+    s.split(/[、,，和及]/).forEach(function (part) {
+      var m = part.match(/^([一二三四五六日天1-7])到([一二三四五六日天1-7])$/);
+      if (m) {
+        var a = WDV(m[1]), b = WDV(m[2]);
+        if (a === 0) a = 7; if (b === 0) b = 7;
+        for (var i = a; i <= b; i++) out.push(i % 7);
+      } else {
+        part.split('').forEach(function (c) { if (c in WD || /[1-7]/.test(c)) out.push(WDV(c)); });
+      }
+    });
+    return out.filter(function (v, i) { return out.indexOf(v) === i; });
+  }
+
+  var REL = ['朋友', '家人', '同事', '同學', '學長', '學姐', '學弟', '學妹', '主管', '老闆', '客戶', '爸媽', '爸爸', '媽媽', '男友', '女友', '老婆', '老公'];
+
+  var PERIODS = '凌晨|半夜|清晨|早上|上午|早|中午|下午|午後|傍晚|晚上|夜晚|晚';
+  function periodOf(w) {
+    if (!w) return null;
+    if (/凌晨|半夜/.test(w)) return 'late';
+    if (/清晨|早上|上午|^早$/.test(w)) return 'am';
+    if (w === '中午') return 'noon';
+    return 'pm';
+  }
+  /* 把「九月二十號、三點、兩個小時、星期五」這類中文數字換成阿拉伯數字，其餘文字不動 */
+  function cnDigits(t) {
+    return t.replace(/([零〇一二兩三四五六七八九十]{1,3})(?=\s*(?:月|日|號|点|點|時|個?半?小時|個?鐘頭|分鐘|分|刻))/g, function (all, n, off, str) {
+      var prev = str.charAt(off - 1);
+      if (/[期週拜]/.test(prev) && /^[一二三四五六日]$/.test(n)) return all;     // 星期一 日 之類不動
+      var v = cnNum(n.replace(/〇/g, '零')); return v == null || isNaN(v) ? all : String(v);
+    });
+  }
+
+  function parse(text, now, calendars, people) {
+    now = now || new Date();
+    calendars = calendars || [];
+    var raw = text;
+    var t = cnDigits(normalize(text));
+    var today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    var r = { who: '', title: '', date: null, s: null, e: null, allDay: false, loc: '', calIndex: 0, calReason: '', repeat: null, dateGuessed: false, timeGuessed: false };
+    var m, WDC = '[一二三四五六日天1-7]';
+
+    // 1. 重複
+    if ((m = t.match(new RegExp('每(?:個)?(?:週|星期)\\s*(' + WDC + '(?:\\s*[到至\\-、,，和]\\s*' + WDC + ')*)')))) {
+      r.repeat = wdList(m[1].replace(/\s/g, '')); t = t.replace(m[0], ' ');
+    } else if ((m = t.match(/每天|每日/))) {
+      r.repeat = [0, 1, 2, 3, 4, 5, 6]; t = t.replace(m[0], ' ');
+    } else if ((m = t.match(/每個?(平日|工作日)/))) {
+      r.repeat = [1, 2, 3, 4, 5]; t = t.replace(m[0], ' ');
+    } else if ((m = t.match(/每個?週末/))) {
+      r.repeat = [6, 0]; t = t.replace(m[0], ' ');
+    }
+
+    // 1b. 重複的結束日：「到 12/31」「至2027/1/15」
+    if (r.repeat && (m = t.match(/(?:到|至|直到|until)\s*(?:(\d{4})\s*[\/\-.年]\s*)?(\d{1,2})\s*[\/月]\s*(\d{1,2})\s*[日號]?/i))) {
+      var uy = m[1] ? +m[1] : today.getFullYear(), ud = new Date(uy, +m[2] - 1, +m[3]);
+      if (!m[1] && ud < today) ud.setFullYear(uy + 1);
+      r.until = ymd(ud); t = t.replace(m[0], ' ');
+    }
+
+    // 2. 日期
+    var date = null, evening = false;
+    // 日期區間「9/25～9/28」→ 連續整天
+    if ((m = t.match(/(\d{1,2})\s*\/\s*(\d{1,2})\s*(?:[（(][^）)]{1,3}[）)])?\s*-\s*(\d{1,2})\s*\/\s*(\d{1,2})\s*(?:[（(][^）)]{1,3}[）)])?/))) {
+      var d1 = new Date(today.getFullYear(), +m[1] - 1, +m[2]), d2 = new Date(today.getFullYear(), +m[3] - 1, +m[4]);
+      if (d1 < addDays(today, -30)) { d1.setFullYear(d1.getFullYear() + 1); d2.setFullYear(d2.getFullYear() + 1); }
+      if (d2 < d1) d2.setFullYear(d2.getFullYear() + 1);
+      date = d1; r.endDate = ymd(d2); t = t.replace(m[0], ' ');
+    }
+    if (date) { /* 已是區間 */ }
+    else if ((m = t.match(/(\d{4})\s*[\/\-.年]\s*(\d{1,2})\s*[\/\-.月]\s*(\d{1,2})\s*[日號]?/))) {
+      date = new Date(+m[1], +m[2] - 1, +m[3]); t = t.replace(m[0], ' ');
+    } else if ((m = t.match(/(\d{1,2})\s*(?:\/|月)\s*(\d{1,2})\s*[日號]?/))) {
+      date = new Date(today.getFullYear(), +m[1] - 1, +m[2]);
+      if (date < addDays(today, -30)) date.setFullYear(date.getFullYear() + 1);
+      t = t.replace(m[0], ' ');
+    } else if ((m = t.match(/大後天/))) { date = addDays(today, 3); t = t.replace(m[0], ' '); }
+    else if ((m = t.match(/後天/))) { date = addDays(today, 2); t = t.replace(m[0], ' '); }
+    else if ((m = t.match(/明晚/))) { date = addDays(today, 1); evening = true; t = t.replace(m[0], ' '); }
+    else if ((m = t.match(/明天|明日/))) { date = addDays(today, 1); t = t.replace(m[0], ' '); }
+    else if ((m = t.match(/今晚/))) { date = today; evening = true; t = t.replace(m[0], ' '); }
+    else if ((m = t.match(/今天|今日/))) { date = today; t = t.replace(m[0], ' '); }
+    else if ((m = t.match(new RegExp('(下下|下|這|本)?\\s*(?:個)?(?:週|星期)\\s*(' + WDC + ')')))) {
+      var target = /\d/.test(m[2]) ? (+m[2]) % 7 : WD[m[2]];
+      var mondayIdx = (today.getDay() + 6) % 7, targetIdx = (target + 6) % 7;
+      if (m[1] === '下' || m[1] === '下下') date = addDays(today, -mondayIdx + 7 * (m[1] === '下' ? 1 : 2) + targetIdx);
+      else if (m[1] === '這' || m[1] === '本') date = addDays(today, -mondayIdx + targetIdx);
+      else date = addDays(today, (target - today.getDay() + 7) % 7);
+      t = t.replace(m[0], ' ');
+    } else if ((m = t.match(/(^|[^\d期週拜])(\d{1,2})\s*[號日](?![遊])/))) {       // 只寫「20號」＝這個月（過了就下個月）
+      var dd = +m[2];
+      if (dd >= 1 && dd <= 31) {
+        date = new Date(today.getFullYear(), today.getMonth(), dd);
+        if (date < today) date = new Date(today.getFullYear(), today.getMonth() + 1, dd);
+        t = t.replace(m[0], m[1] + ' ');
+      }
+    }
+    if (!date && r.repeat) {
+      for (var k = 0; k < 7; k++) { var d7 = addDays(today, k); if (r.repeat.indexOf(d7.getDay()) >= 0) { date = d7; break; } }
+    }
+    if (!date) { date = today; r.dateGuessed = true; }
+    r.date = ymd(date);
+
+    t = t.replace(/[（(]\s*[一二三四五六日天]\s*[）)]/g, ' ');     // 「（三）」這種星期標註
+    if (r.endDate && r.endDate !== r.date) r.allDay = true;
+
+    // 3. 整天
+    if ((m = t.match(/一整天|整天|全天/))) { r.allDay = true; t = t.replace(m[0], ' '); }
+
+    // 4. 長度
+    var dur = null;
+    if ((m = t.match(/(\d+(?:\.\d+)?)\s*(?:個)?\s*(半)?\s*(?:小時|鐘頭|hr|h)(半)?/i))) {
+      dur = parseFloat(m[1]) * 60 + ((m[2] || m[3]) ? 30 : 0); t = t.replace(m[0], ' ');
+    } else if ((m = t.match(/半小時|半個小時|半個鐘頭/))) { dur = 30; t = t.replace(m[0], ' '); }
+    else if ((m = t.match(/(\d+)\s*(?:分鐘|min)/i))) { dur = +m[1]; t = t.replace(m[0], ' '); }
+
+    // 5. 時間（數字、中文、「下午3點」「15:00」「3pm」都可以混著寫）
+    var P = '(' + PERIODS + ')?\\s*';
+    var H = '(\\d{1,2})';
+    var MI = '(?:\\s*[:.：](\\d{2})|\\s*[點点時]\\s*(半|\\d{1,2}\\s*分?|\\d刻)?)?\\s*(am|pm|a\\.m\\.|p\\.m\\.)?';
+    var MR = '(?:\\s*[:.：](\\d{2})|\\s*[點点時]\\s*(半|\\d{1,2}\\s*分?|\\d刻)?|(?=\\s*(?:am|pm)))\\s*(am|pm|a\\.m\\.|p\\.m\\.)?';   // 單一時間一定要有「點」或「:」或 am/pm
+    var reRange = new RegExp(P + H + MI + '\\s*(?:-|到|至|~)\\s*' + P + H + MI, 'i');
+    var reOne = new RegExp(P + H + MR, 'i');
+    var anyP = t.match(new RegExp(PERIODS));
+    var gPeriod = evening ? 'pm' : (anyP ? periodOf(anyP[0]) : null);
+    function minPart(x) {
+      if (!x) return 0; x = String(x).replace(/\s|分/g, '');
+      if (x === '半') return 30; if (/刻$/.test(x)) return (+x.charAt(0)) * 15; return parseInt(x, 10) || 0;
+    }
+    function to24(h, per, ap, guessPm) {
+      ap = ap ? ap.toLowerCase().charAt(0) : '';
+      if (ap === 'p') return h < 12 ? h + 12 : h;
+      if (ap === 'a') return h === 12 ? 0 : h;
+      if (per === 'pm') return h < 12 ? h + 12 : h;
+      if (per === 'noon') return h <= 2 ? (h === 12 ? 12 : h + 12) : h;
+      if (per === 'am' || per === 'late') return h === 12 ? 0 : h;
+      if (guessPm && h >= 1 && h <= 7) { r.timeGuessed = true; return h + 12; }
+      return h;
+    }
+    if (!r.allDay && (m = t.match(reRange)) && +m[2] <= 24 && +m[7] <= 24) {
+      var p1 = periodOf(m[1]) || gPeriod, p2 = periodOf(m[6]);
+      var ap1 = m[5] || (!m[5] && m[10] && !p1 ? m[10] : '');                // 「3-5pm」→ 開始也算 pm
+      var hs = to24(+m[2], p1, ap1, !m[10] && !p2);
+      var s = hs * 60 + minPart(m[3] || m[4]);
+      var he = to24(+m[7], p2 || (m[10] ? null : p1 === 'noon' ? 'pm' : p1), m[10], false);
+      var e = he * 60 + minPart(m[8] || m[9]);
+      if (e <= s && e + 720 > s && !m[10] && !p2) e += 720;       // 「下午3-6」「6-9」→ 結束也算下午
+      r.s = s; r.e = Math.min(e, 1440);
+      t = t.replace(m[0], ' ');
+    } else if (!r.allDay && (m = t.match(reOne)) && +m[2] <= 24) {
+      r.s = to24(+m[2], periodOf(m[1]) || gPeriod, m[5], true) * 60 + minPart(m[3] || m[4]);
+      r.e = Math.min(r.s + (dur || 60), 1440);
+      t = t.replace(m[0], ' ');
+    }
+    t = t.replace(new RegExp(PERIODS, 'g'), function (w) { return /^晚$|^早$/.test(w) ? w : ' '; });   // 時段詞不進標題
+    t = t.replace(/(^|\s)[早晚](?=\s|$)/g, ' ');
+    if (r.s === null && !r.allDay) {
+      if (gPeriod) {
+        var w0 = anyP ? anyP[0] : '';
+        var def = /下午|午後/.test(w0) ? 840 : w0 === '傍晚' ? 1020 : { am: 540, noon: 720, pm: 1140, late: 60 }[gPeriod];
+        r.s = def; r.e = def + (dur || 60); r.timeGuessed = true;
+      } else if (dur) {
+        r.s = 540; r.e = 540 + dur; r.timeGuessed = true;
+      } else { r.allDay = true; }
+    }
+    if (dur && r.s !== null && r.e === r.s + 60 && dur !== 60) r.e = Math.min(r.s + dur, 1440);
+
+    // 7. 地點
+    if ((m = t.match(/(?:@|在)\s*([^\s,，。]+)/))) {
+      r.loc = m[1]; t = t.replace(m[0], ' ');
+    } else {
+      var found = null;
+      PLACES.forEach(function (p) { if (!found && t.toLowerCase().indexOf(p.toLowerCase()) >= 0) found = p; });
+      if (found) {
+        var pm = t.match(new RegExp('([\\u4e00-\\u9fa5]{1,3}區)?' + found + '([\\u4e00-\\u9fa5]{1,4}(?:店|門市))?', 'i'));
+        r.loc = pm ? pm[0] : found; t = t.replace(r.loc, ' ');
+      } else if ((m = t.match(PLACE_SUFFIX))) {
+        r.loc = m[0]; t = t.replace(m[0], ' ');
+      }
+    }
+
+    // 8. 分類
+    var best = -1, bestScore = 0, low = raw.toLowerCase();
+    calendars.forEach(function (c, i) {
+      (c.keywords || []).forEach(function (kw) {
+        kw = String(kw).trim(); if (!kw) return;
+        if (low.indexOf(kw.toLowerCase()) >= 0 && kw.length > bestScore) { bestScore = kw.length; best = i; r.calReason = kw; }
+      });
+    });
+    r.calIndex = best >= 0 ? best : 0;
+
+    // 9. 對象：用過的名字 > 「跟／和／與／找 + 名字」> 關係詞
+    var src = normalize(raw);
+    (people || []).slice().sort(function (a, b) { return b.length - a.length; }).forEach(function (n) { if (!r.who && n && src.indexOf(n) >= 0) r.who = n; });
+    if (!r.who && (m = src.match(/(?:跟|和|與|找|陪)\s*([A-Za-z]+|[\u4e00-\u9fa5]{2,3}?)(?=吃|喝|聊|見|去|開|討論|碰|看|打|玩|逛|講|談|約|上|練|運動|健身|跑|唱|報告|會議|面談|諮詢|\s|$)/))) {
+      if (!/^(大家|他們|她們|我們|你們)$/.test(m[1])) r.who = m[1];
+    }
+    if (!r.who) REL.forEach(function (w) { if (!r.who && src.indexOf(w) >= 0) r.who = w; });
+
+    // 10. 標題
+    var title = t.replace(/[,，。、]/g, ' ').replace(/\s+/g, ' ').trim();
+    title = title.replace(/([\u4e00-\u9fa5])\s+(?=[\u4e00-\u9fa5])/g, '$1');
+    r.title = title || raw.trim();
+    return r;
+  }
+  /* 整批匯入：一行一筆，「日期時間｜內容」或直接一句話 */
+  function parseMany(text, now, calendars, people) {
+    return String(text || '').split(/\r?\n/).map(function (line) {
+      var raw = line.replace(/^\s*(?:[*＊•·\-–]|\d+[.、)])\s*/, '').trim();
+      if (!raw) return null;
+      var parts = raw.split(/\s*[｜|]\s*/), when = parts[0], title = parts.slice(1).join(' ').trim();
+      var r = title ? parse(when, now, calendars, people) : parse(raw, now, calendars, people);
+      if (title) {
+        var t2 = parse(title + ' ' + when, now, calendars, people);      // 用內容判斷分類和對象
+        r.title = title; r.calIndex = t2.calIndex; r.calReason = t2.calReason; r.who = t2.who; if (!r.loc) r.loc = t2.loc;
+      }
+      r.line = raw;
+      r.ok = !r.dateGuessed;
+      return r;
+    }).filter(Boolean);
+  }
+  /* 找出「同名、同星期、同時段、每週一次」的組合 */
+  function findWeekly(rows) {
+    var g = {};
+    rows.forEach(function (r, i) {
+      if (r.allDay || r.repeat) return;
+      var wd = new Date(r.date.replace(/-/g, '/')).getDay();
+      var k = r.title + '|' + wd + '|' + r.s + '|' + r.e;
+      (g[k] = g[k] || []).push(i);
+    });
+    return Object.keys(g).map(function (k) {
+      var idx = g[k].slice().sort(function (a, b) { return rows[a].date < rows[b].date ? -1 : 1; });
+      if (idx.length < 2) return null;
+      for (var j = 1; j < idx.length; j++) {
+        var gap = (new Date(rows[idx[j]].date.replace(/-/g, '/')) - new Date(rows[idx[j - 1]].date.replace(/-/g, '/'))) / 86400000;
+        if (Math.round(gap) !== 7) return null;
+      }
+      var first = rows[idx[0]];
+      return { idx: idx, title: first.title, wd: new Date(first.date.replace(/-/g, '/')).getDay(), s: first.s, e: first.e, from: first.date, until: rows[idx[idx.length - 1]].date };
+    }).filter(Boolean);
+  }
+  return { parse: parse, parseMany: parseMany, findWeekly: findWeekly, ymd: ymd };
+})();
+</script>
