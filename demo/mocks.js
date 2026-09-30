@@ -37,6 +37,7 @@ function makeGoogle(owner) {
       if (f === 'H') return String(+p.hour); if (f === 'm') return String(+p.minute);
       return p.year + '-' + p.month + '-' + p.day + ' ' + p.hour + ':' + p.minute;
     },
+    sleep: function () {},
     getUuid: function () { return 'xxxxxxxx-xxxx-4xxx'.replace(/x/g, function () { return (Math.random() * 16 | 0).toString(16); }); }
   };
 
@@ -142,7 +143,7 @@ function makeGoogle(owner) {
   st.events[owner] = [];
   return {
     st: st,
-    PropertiesService: { getScriptProperties: function () { return { getProperty: function (k) { return st.props[k] || null; }, setProperty: function (k, v) { st.props[k] = v; } }; } },
+    PropertiesService: { getScriptProperties: function () { return { getProperty: function (k) { return st.props[k] || null; }, setProperty: function (k, v) { st.props[k] = v; }, deleteProperty: function (k) { delete st.props[k]; } }; } },
     CacheService: { getScriptCache: function () { return { get: function (k) { return st.cache[k] || null; }, put: function (k, v) { st.cache[k] = v; }, remove: function (k) { delete st.cache[k]; } }; } },
     SpreadsheetApp: { create: function () { return ss; }, openById: function () { return ss; } },
     Session: { getActiveUser: function () { return { getEmail: function () { return owner; } }; }, getEffectiveUser: function () { return { getEmail: function () { return owner; } }; } },
@@ -156,6 +157,16 @@ function makeGoogle(owner) {
       deleteTrigger: function (t) { st.triggers = (st.triggers || []).filter(function (h) { return h !== t.getHandlerFunction(); }); },
       newTrigger: function (h) { var b = { timeBased: function () { return b; }, everyDays: function () { return b; }, atHour: function () { return b; }, inTimezone: function () { return b; }, create: function () { (st.triggers = st.triggers || []).push(h); } }; return b; }
     },
-    HtmlService: {}
+    HtmlService: {},
+    /* 試玩版不會真的連到 Claude 或 Gemini：固定回一段「看起來像從截圖讀出來」的結果 */
+    UrlFetchApp: { fetch: function (url, o) {
+      var z = function (n) { return (n < 10 ? '0' : '') + n; }, day = function (plus, wd) { var d = new Date(); if (wd != null) d.setDate(d.getDate() + ((wd - d.getDay() + 7) % 7 || 7)); else d.setDate(d.getDate() + plus); return d.getFullYear() + '-' + z(d.getMonth() + 1) + '-' + z(d.getDate()); };
+      var list = [
+        { date: day(0, 6), start: '19:00', end: null, allDay: false, title: '跟阿明吃飯', who: '阿明', place: '信義區 鼎泰豐', note: '他說會晚 10 分鐘', sure: true },
+        { date: day(0, 0), start: '14:00', end: '16:00', allDay: false, title: '一起看展', who: '阿明', place: '北師美術館', note: '', sure: false }
+      ];
+      var out = /anthropic/.test(url) ? { content: [{ type: 'text', text: JSON.stringify(list) }] } : { candidates: [{ content: { parts: [{ text: JSON.stringify(list) }] } }] };
+      return { getResponseCode: function () { return 200; }, getContentText: function () { return JSON.stringify(out); } };
+    } }
   };
 }

@@ -61,7 +61,7 @@
 <script>
 /*__BUILD__*/
 
-var B, current = 'admin';
+var B, current = 'admin', slowFirst = false;
 function pad2(n) { return (n < 10 ? '0' : '') + n; }
 
 function seed() {
@@ -83,6 +83,7 @@ function seed() {
   cfg.people = ['陳大文'];
   cfg.familyCal = 'family-demo@group.calendar.google.com'; cfg.familyName = '家庭';
   cfg.me = { name: '小安', brand: '', tagline: '職涯、實習、轉職都可以問' };
+  B.G.st.props.AI_KEY = 'sk-ant-demo-not-real-0000000000';   // 試玩版：截圖判讀用假的回覆（不會真的連線）
   cfg.notes = {}; cfg.notes[today.slice(0, 7)] = { f: '這個月大多在台北，平日晚上比較方便。\n想約白天先跟我說一聲。', p: '這個月新朋友只接線上，一次 30 分鐘。' };
   cfg.shareCals = [C[1], C[2]];
   a.saveConfig_(cfg);
@@ -136,7 +137,7 @@ function show(v) {
     return;
   }
   var cfg = B.api.getConfig_(), html;
-  if (v === 'admin') html = TPL_ADMIN;
+  if (v === 'admin') { slowFirst = true; html = TPL_ADMIN.replace('<?!= boot ?>', JSON.stringify({ here: cfg.publicUrl + '?admin', me: cfg.me })); }
   else if (v === 'share') html = TPL_SHARE.replace('<?!= boot ?>', JSON.stringify((function(){var sb=B.api.shareBoot_(cfg); sb.here=cfg.publicUrl+'?v=s'; return sb;})()).replace(/</g, '\\u003c'));
   else { var bb = B.api.bookBoot_(cfg, v, v === 'friend' ? cfg.audiences.friend.token : ''); bb.here = cfg.publicUrl + (v === 'friend' ? '?v=f' : ''); html = TPL_BOOK.replace('<?!= boot ?>', JSON.stringify(bb).replace(/</g, '\\u003c')); }
   stage.innerHTML = '<div class="phone"><iframe id="frame" title="' + (v === 'admin' ? '後台' : v === 'friend' ? '朋友預約頁' : v === 'share' ? '分享的行程' : '新朋友預約頁') + '"></iframe></div>';
@@ -152,7 +153,7 @@ window.addEventListener('message', function (e) {
       catch (err) { res = { __gcRes: 1, id: d.id, ok: false, err: err.message }; }
       e.source.postMessage(res, '*');
       badge();
-    }, 160);
+    }, d.fn === 'adminParseImage' ? 2200 : (d.fn === 'adminEvents' && slowFirst) ? (slowFirst = false, 1400) : 160);   // 讓開場動畫和判讀等待看得到
   }
   if (d && d.__gcNav) {
     if (/macros\/s\/DEMO\/exec/.test(d.href)) show(/v=f/.test(d.href) ? 'friend' : /v=s/.test(d.href) ? 'share' : 'public');

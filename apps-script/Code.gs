@@ -84,7 +84,8 @@ function doGet(e) {
   var p = (e && e.parameter) || {};
   if (p.admin !== undefined) {
     if (!isOwner_()) return msgPage_('這個頁面只有本人能開。');
-    return page_('Admin', { here: selfUrl_(null, e) }, getConfig_().me.name + ' 行事曆', true);
+    var data = adminBoot();
+    return page_('Admin', { here: selfUrl_(null, e), me: data.cfg.me, data: data }, data.cfg.me.name + ' 行事曆', true);
   }
   var cfg = getConfig_();
   if (p.v === 'f') {
@@ -131,7 +132,7 @@ function include(name) { return HtmlService.createHtmlOutputFromFile(name).getCo
 /** 第一個月的資料直接放進頁面，打開就看得到，不用再等一次連線 */
 function bookBoot_(cfg, aud, k) {
   var today = ymdOf_(new Date()), ym = today.slice(0, 7), first = null;
-  try { first = { ym: ym, days: monthData_(cfg, aud, ym).days }; } catch (e) { console.error(e); }
+  try { var md = monthData_(cfg, aud, ym); first = { ym: ym, days: md.days, booked: md.booked }; } catch (e) { console.error(e); }
   return { aud: aud, k: k, today: today, rangeEnd: RANGE_END, first: first, notes: notesFor_(cfg, aud), me: cfg.me };
 }
 /** 每個月的話，挑出這個對象看得到的 */
@@ -319,7 +320,29 @@ function monthData_(cfg, aud, ym) {
   var now = Date.now();
   var needBusy = Object.keys(cfg.open).some(function (d) { return d >= from && d <= to && openRanges_(cfg, aud, d).length; });
   var busy = needBusy ? busy_(cfg, fromMs, toMs) : [];
-  return { days: computeDays_(cfg, aud, from, to, busy, now) };
+  var days = computeDays_(cfg, aud, from, to, busy, now);
+  var bk = bookedIn_(cfg, from, to);
+  days.forEach(function (d) { var t = bk.byDay[d.date]; if (t) { d.booked = t.length; d.taken = t; } });
+  return { days: days, booked: bk.total };
+}
+
+/** 這段期間透過預約頁約的（含待審核），只回傳時間，不回傳是誰 */
+function bookedIn_(cfg, from, to) {
+  var ids = {}, byDay = {}, total = 0;
+  [cfg.bookTo.friend, cfg.bookTo.public].forEach(function (id) { if (id) ids[id] = 1; });
+  Object.keys(ids).forEach(function (cid) {
+    try {
+      var res = Calendar.Events.list(cid, { timeMin: dateOf_(from).toISOString(), timeMax: dateOf_(addDaysYmd_(to, 1)).toISOString(), singleEvents: true, maxResults: 500 });
+      (res.items || []).forEach(function (ev) {
+        if (ev.status === 'cancelled' || !ev.start.dateTime || !/^透過預約頁/.test(ev.description || '')) return;
+        var a = localParts_(new Date(ev.start.dateTime)), b = localParts_(new Date(ev.end.dateTime));
+        (byDay[a.ymd] = byDay[a.ymd] || []).push({ s: a.min, e: b.ymd === a.ymd ? b.min : 1440 });
+        total++;
+      });
+    } catch (e) { console.error(e); }
+  });
+  Object.keys(byDay).forEach(function (k) { byDay[k].sort(function (x, y) { return x.s - y.s; }); });
+  return { byDay: byDay, total: total };
 }
 
 function clean_(s, max) { return String(s == null ? '' : s).replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, max); }
@@ -554,7 +577,8 @@ function adminBoot() {
     sheetUrl: ss_().getUrl(),
     today: ymdOf_(new Date()),
     rangeEnd: RANGE_END,
-    board: getBoard_()
+    board: getBoard_(),
+    ai: aiStatus_()
   };
 }
 
@@ -692,6 +716,127 @@ function adminDelete(cal, id, rid, all) {
   }
   Calendar.Events.remove(cal, target);
   return { ok: true };
+}
+
+/* ======================= 截圖判讀：Claude（付費、快）或 Gemini（免費、較慢） ======================= */
+/* 金鑰存在「指令碼屬性」，不在試算表、也不在程式碼裡。貼哪一家的金鑰，就用哪一家 */
+
+var CLAUDE_MODELS = ['claude-haiku-4-5-20251001', 'claude-haiku-4-5'];   // 最便宜的 Claude
+var AI_MODELS = ['gemini-flash-latest', 'gemini-3.8-flash', 'gemini-3.5-flash', 'gemini-flash-lite-latest', 'gemini-3.5-flash-lite'];
+function aiKey_() {
+  var p = PropertiesService.getScriptProperties();
+  var k = p.getProperty('AI_KEY') || p.getProperty('GEMINI_KEY') || '';
+  return { key: k, provider: /^sk-ant-/.test(k) ? 'claude' : 'gemini' };
+}
+function aiStatus_() {
+  var a = aiKey_();
+  return { set: !!a.key, tail: a.key ? a.key.slice(-4) : '', provider: a.key ? a.provider : '' };
+}
+function adminSaveAiKey(key) {
+  requireOwner_();
+  var props = PropertiesService.getScriptProperties();
+  key = String(key || '').replace(/\s+/g, '');                     // 複製時多帶的空白、換行去掉
+  if (!key) { props.deleteProperty('AI_KEY'); props.deleteProperty('GEMINI_KEY'); return aiStatus_(); }
+  if (!/^[A-Za-z0-9_\-.]{20,300}$/.test(key)) throw new Error('金鑰格式不對，請整串複製貼上（Claude 是 sk-ant- 開頭，Gemini 是 AQ. 或 AIza 開頭）');
+  props.setProperty('AI_KEY', key); props.deleteProperty('GEMINI_KEY');
+  return aiStatus_();
+}
+
+function aiPrompt_() {
+  var now = new Date(), today = ymdOf_(now);
+  return [
+    '你是行程助理。圖片是一段聊天截圖（LINE、IG、Messenger 之類）。',
+    '找出裡面已經約定好、或正在提議的見面與活動，只輸出一個 JSON 陣列，不要輸出任何其他文字或說明。',
+    '今天是 ' + today + '（星期' + WDN[now.getDay()] + '），時區台北。',
+    '「明天」「下週四」「這週六」這類相對日期要換算成實際日期；沒寫年份就用今天之後最近的那個日期。',
+    '每一筆格式：{"date":"YYYY-MM-DD","start":"HH:MM 或 null","end":"HH:MM 或 null","allDay":true 或 false,',
+    '"title":"簡短標題，例如「跟阿明吃飯」","who":"對方的名字或暱稱，看不出來就空字串","place":"地點，沒有就空字串",',
+    '"note":"其他重要細節，例如要帶的東西，沒有就空字串","sure":true 或 false（日期時間是否已經講定）}',
+    '只有時間點沒有結束時間時 end 給 null。完全沒有活動就輸出 []。'
+  ].join('\n');
+}
+
+/** 讀一張截圖，回傳裡面約好的行程（還沒寫進日曆，後台確認後才匯入） */
+function adminParseImage(b64, mime) {
+  requireOwner_();
+  var a = aiKey_();
+  if (!a.key) throw new Error('還沒設定截圖判讀的金鑰（設定 → 截圖判讀）');
+  if (!/^image\/(png|jpeg|webp)$/.test(mime)) throw new Error('只支援 PNG、JPG 截圖');
+  if (!b64 || b64.length > 8000000) throw new Error('圖片太大，請截小一點');
+  return cleanAiEvents_(a.provider === 'claude' ? claudeRead_(a.key, b64, mime) : geminiRead_(a.key, b64, mime));
+}
+
+/** Claude（Messages API） */
+function claudeRead_(key, b64, mime) {
+  var body = { max_tokens: 1500, temperature: 0,
+    messages: [{ role: 'user', content: [{ type: 'image', source: { type: 'base64', media_type: mime, data: b64 } }, { type: 'text', text: aiPrompt_() }] }] };
+  var last = 0, started = Date.now();
+  for (var i = 0; i < CLAUDE_MODELS.length; i++) {
+    body.model = CLAUDE_MODELS[i];
+    for (var attempt = 0; attempt < 3; attempt++) {
+      if (Date.now() - started > 45000) break;
+      var res = UrlFetchApp.fetch('https://api.anthropic.com/v1/messages', {
+        method: 'post', contentType: 'application/json', muteHttpExceptions: true, payload: JSON.stringify(body),
+        headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01' } });
+      var code = res.getResponseCode(), txt = res.getContentText();
+      last = code;
+      if (code === 200) {
+        try { return JSON.parse(txt).content.map(function (c) { return c.text || ''; }).join(''); } catch (e) { return ''; }
+      }
+      if (code === 401) throw new Error('Claude 金鑰無效（401），請到設定重新貼一次');
+      if (code === 403) throw new Error('這組 Claude 金鑰沒有權限（403），請到 console.anthropic.com 確認');
+      if (code === 400 && /credit balance/i.test(txt)) throw new Error('Claude 帳戶餘額不足，請到 console.anthropic.com → Billing 儲值');
+      if (code === 429 || code === 500 || code === 529 || code === 503) { Utilities.sleep(1500 * (attempt + 1)); continue; }   // 太忙或太頻繁：等一下再試
+      break;                                                       // 404 型號名稱不對 → 換下一個
+    }
+  }
+  if (last === 429) throw new Error('Claude 暫時請求太多（429），過一分鐘再試');
+  if (last >= 500) throw new Error('Claude 現在太忙（' + last + '），過幾分鐘再按一次「判讀」');
+  throw new Error('判讀失敗（' + last + '），稍後再試');
+}
+
+/** Gemini（免費額度） */
+function geminiRead_(key, b64, mime) {
+  var body = { contents: [{ parts: [{ text: aiPrompt_() }, { inline_data: { mime_type: mime, data: b64 } }] }],
+    generationConfig: { responseMimeType: 'application/json', temperature: 0.1 } };
+  var cfg = getConfig_(), tried = [cfg.aiModel].concat(AI_MODELS).filter(function (m, i, a) { return m && /^gemini/.test(m) && a.indexOf(m) === i; });
+  var last = 0, started = Date.now();
+  for (var i = 0; i < tried.length; i++) {
+    for (var attempt = 0; attempt < 3; attempt++) {
+      if (Date.now() - started > 45000) break;                   // 最多等 45 秒，不要讓畫面卡太久
+      var res = UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/models/' + tried[i] + ':generateContent', {
+        method: 'post', contentType: 'application/json', headers: { 'x-goog-api-key': key }, payload: JSON.stringify(body), muteHttpExceptions: true });
+      var code = res.getResponseCode(), txt = res.getContentText();
+      last = code;
+      if (code === 200) {
+        if (cfg.aiModel !== tried[i]) { cfg.aiModel = tried[i]; saveConfig_(cfg); }
+        try { return JSON.parse(txt).candidates[0].content.parts.map(function (p) { return p.text || ''; }).join(''); } catch (e) { return ''; }
+      }
+      if (code === 400 && /API key/i.test(txt)) throw new Error('Gemini 金鑰無效，請到設定重新貼一次');
+      if (code === 401) throw new Error('Gemini 不接受這組金鑰（401）。新建立的 AQ. 金鑰有時要等幾分鐘才生效；還是不行就到 AI Studio 重新建立一組');
+      if (code === 403) throw new Error('這組金鑰沒有權限，請確認是在 Google AI Studio 建立的');
+      if (code === 500 || code === 502 || code === 503 || code === 504) { Utilities.sleep(1500 * (attempt + 1)); continue; }   // Gemini 太忙：等一下再試
+      break;                                                     // 404 型號不存在、429 這個型號額度用完 → 換下一個型號
+    }
+  }
+  if (last === 429) throw new Error('今天的免費額度用完了，明天再試或改用手動輸入');
+  if (last >= 500) throw new Error('Gemini 現在太忙（' + last + '），過幾分鐘再按一次「判讀」');
+  throw new Error('判讀失敗（' + last + '），稍後再試');
+}
+function cleanAiEvents_(text) {
+  var list, raw = String(text || '').replace(/```(json)?/g, '').trim();
+  var i = raw.indexOf('['), j = raw.lastIndexOf(']');              // 模型偶爾會在 JSON 前後多講一句話
+  if (i >= 0 && j > i) raw = raw.slice(i, j + 1);
+  try { list = JSON.parse(raw); } catch (e) { throw new Error('看不懂這張截圖，換一張或改用手動輸入'); }
+  if (!Array.isArray(list)) list = list && Array.isArray(list.events) ? list.events : [];
+  var hm = function (x) { var m = /^(\d{1,2}):(\d{2})$/.exec(String(x || '')); return m && +m[1] < 24 && +m[2] < 60 ? (+m[1]) * 60 + (+m[2]) : null; };
+  return list.slice(0, 20).map(function (x) {
+    if (!x || !/^\d{4}-\d{2}-\d{2}$/.test(x.date)) return null;
+    var s = hm(x.start), e = hm(x.end), allDay = !!x.allDay || s == null;
+    if (!allDay && (e == null || e <= s)) e = Math.min(s + 60, 1440);
+    return { date: x.date, s: allDay ? 0 : s, e: allDay ? 1440 : e, allDay: allDay, title: clean_(x.title, 100) || '（未命名）',
+      who: clean_(x.who, 40), loc: clean_(x.place, 200), note: note_(x.note).slice(0, 300), sure: x.sure !== false };
+  }).filter(Boolean);
 }
 
 /* ======================= 家庭日曆：只寫入你選的行程，不讀家人的 ======================= */

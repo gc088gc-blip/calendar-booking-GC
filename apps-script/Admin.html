@@ -206,10 +206,30 @@
     .wbr.done .wbi { color: var(--faint); text-decoration: line-through; }
     .wbx { width: 32px; height: 32px; border: 0; background: none; color: var(--faint); font-size: 20px; line-height: 1; cursor: pointer; flex-shrink: 0; border-radius: 8px; }
     button.wbx:active { background: #f3f1ec; }
+    /* 開頭的小動畫：翻頁的日曆 */
+    .boot { min-height: 78vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; }
+    .bcal { width: 68px; height: 74px; border-radius: 16px; background: #fff; box-shadow: 0 10px 28px rgba(29,28,26,.14); position: relative; overflow: hidden; }
+    .bcal::before { content: ''; position: absolute; left: 0; right: 0; top: 0; height: 20px; background: var(--ink); }
+    .bring { position: absolute; top: 7px; left: 0; right: 0; display: flex; justify-content: space-between; padding: 0 17px; z-index: 3; }
+    .bring i { width: 6px; height: 6px; border-radius: 3px; background: #fff; }
+    .bnum { position: absolute; top: 20px; left: 0; right: 0; bottom: 0; display: flex; align-items: center; justify-content: center; font-size: 30px; font-weight: 700; font-variant-numeric: tabular-nums; }
+    .bpage { position: absolute; top: 20px; left: 0; right: 0; bottom: 0; background: #fff; transform-origin: top center; animation: bflip 1.1s cubic-bezier(.5,0,.7,.4) infinite; box-shadow: 0 1px 0 var(--line2) inset; z-index: 2; }
+    @keyframes bflip { 0% { transform: rotateX(0); opacity: 1; } 55% { transform: perspective(160px) rotateX(-100deg); opacity: 1; } 56%, 100% { transform: perspective(160px) rotateX(-100deg); opacity: 0; } }
+    .bname { font-size: 17px; font-weight: 700; letter-spacing: .5px; }
+    .bdots { display: flex; gap: 6px; }
+    .bdots i { width: 6px; height: 6px; border-radius: 3px; background: var(--faint); animation: bdot 1.2s infinite; }
+    .bdots i:nth-child(2) { animation-delay: .2s; } .bdots i:nth-child(3) { animation-delay: .4s; }
+    @keyframes bdot { 0%, 80%, 100% { opacity: .25; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-4px); } }
+    @media (prefers-reduced-motion: reduce) { .bpage, .bdots i { animation: none; } }
+    /* 截圖新增 */
+    .shotdrop { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; border: 2px dashed var(--line); border-radius: 16px; background: #fff; min-height: 180px; padding: 16px; text-align: center; cursor: pointer; color: var(--muted); font-size: 14px; }
+    .shotdrop img { max-width: 100%; max-height: 46vh; border-radius: 10px; }
+    .shotwait { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 14px; font-size: 14px; color: var(--muted); }
+    .keysteps { margin: 0; padding-left: 20px; font-size: 14px; line-height: 1.9; }
   </style>
 </head>
 <body>
-<div class="wrap" id="app"><div class="spin">讀取中…</div></div>
+<div class="wrap" id="app"><div class="boot" id="boot"><div class="bcal"><div class="bring"><i></i><i></i></div><div class="bnum" id="bootNum">1</div><div class="bpage"></div></div><div class="bname" id="bootName">行事曆</div><div class="bdots"><i></i><i></i><i></i></div></div></div>
 <div id="sheet"></div>
 <div id="toast"></div>
 <nav class="nav" id="nav"></nav>
@@ -410,7 +430,8 @@ function vCal() {
     (A.menu ? '<div class="qmenu">' +
       '<button onclick="A.menu=false;openManual()">' + fi('clock') + '<span><b>手動新增</b><small>一般表單，一筆一筆填</small></span></button>' +
       '<button onclick="A.menu=false;openWeekly()">' + fi('rep') + '<span><b>每週固定活動</b><small>選每週幾、期間，一次排好</small></span></button>' +
-      '<button onclick="A.menu=false;openImport()">' + fi('cal') + '<span><b>整批匯入</b><small>貼上一整串清單</small></span></button></div>' : '') + '</div>';
+      '<button onclick="A.menu=false;openImport()">' + fi('cal') + '<span><b>整批匯入</b><small>貼上一整串清單</small></span></button>' +
+      '<button onclick="A.menu=false;openShot()">' + fi('image') + '<span><b>從截圖新增</b><small>聊天截圖丟進來，自動抓出約好的時間</small></span></button></div>' : '') + '</div>';
   if (openMode) h += mnRow(ym);
 
   h += '<div class="cal7" style="margin-top:14px;margin-bottom:6px">' + ['一', '二', '三', '四', '五', '六', '日'].map(function (w) { return '<div class="wkhead">' + w + '</div>'; }).join('') + '</div><div class="cal7" style="gap:4px">';
@@ -547,6 +568,7 @@ var FI = {
   person: '<circle cx="12" cy="8.5" r="3.5"/><path d="M5 20c.8-3.6 3.6-5.5 7-5.5s6.2 1.9 7 5.5"/>',
   cal: '<rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/>',
   home: '<path d="M4 11l8-6.5 8 6.5"/><path d="M6 9.5V19h12V9.5"/><path d="M10 19v-5h4v5"/>',
+  image: '<rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><circle cx="9" cy="10" r="1.8"/><path d="M20.5 16l-5-5-8.5 8.5"/>',
   note: '<path d="M5 4h14v11l-5 5H5z"/><path d="M14 20v-5h5"/><path d="M8.5 9h7M8.5 12.5h4"/>',
   pin2: '<path d="M9 4h6l-1 6 3 3H7l3-3z"/><path d="M12 13v7"/>',
   check: '<circle cx="12" cy="12" r="8.5"/><path d="M8.5 12.3l2.4 2.4 4.6-5"/>'
@@ -711,6 +733,77 @@ function saveEdit() {
 }
 
 /* ================= 整批匯入 ================= */
+/* ---------- 從截圖新增（Google Gemini 判讀） ---------- */
+function openShot() { openSheet('shot', { img: '', b64: '', busy: false, err: '' }); }
+function shotSheet(d) {
+  var ai = A.boot.ai || {};
+  var h = sheetHead('<button class="link" style="text-decoration:none" onclick="closeSheet()">取消</button>', '從截圖新增',
+    ai.set ? '<button class="hbtn" ' + (d.b64 && !d.busy ? '' : 'disabled') + ' onclick="shotRun()">判讀</button>' : '<span></span>');
+  if (!ai.set) return h + keyForm();
+  h += '<label class="shotdrop">' + (d.img ? '<img src="' + d.img + '" alt="截圖預覽">' : fi('image') + '<b style="color:var(--ink)">選一張聊天截圖</b><span class="small">LINE、IG、Messenger 都可以</span>') +
+    '<input type="file" accept="image/*" style="display:none" onchange="shotPick(this)"></label>';
+  if (d.busy) h += '<div class="shotwait"><div class="bdots"><i></i><i></i><i></i></div>判讀中，大約 ' + (ai.provider === 'claude' ? '3–8' : '5–20') + ' 秒…</div>';
+  if (d.err) h += '<div class="hint" style="margin-top:10px">' + esc(d.err) + '</div>';
+  h += '<div class="fnote" style="padding:12px 2px 0">判讀完會先給你確認，不會直接寫進日曆。' + (ai.provider === 'claude'
+    ? '截圖會送到 Anthropic（Claude）處理，一張約台幣 0.1 元；API 預設不會拿你送的內容去訓練模型。'
+    : '截圖會送到 Google Gemini 處理；免費方案下 Google 可能用這些內容改進它的產品，太私密的對話請改用手動新增。') + '</div>';
+  h += '<div style="text-align:center;margin-top:6px"><button class="link" onclick="openSheet(\'aikey\',{})">目前用 ' + aiName(ai.provider) + '・更換金鑰</button></div>';
+  return h;
+}
+function aiName(p) { return p === 'claude' ? 'Claude Haiku' : 'Gemini'; }
+function keyForm() {
+  return '<div class="grp pad" style="margin-top:6px"><div class="b">貼上一組 AI 金鑰（二選一）</div>' +
+    '<div class="small" style="line-height:1.7"><b>Claude（建議，快）</b>：一張截圖約台幣 0.1 元。到 <a href="https://console.anthropic.com/settings/keys" target="_blank">console.anthropic.com</a> 登入 → API Keys → Create Key；第一次要先到 Billing 儲值（小額儲值就能用很久）。金鑰是 <b>sk-ant-</b> 開頭。</div>' +
+    '<div class="small muted" style="line-height:1.7"><b>Gemini（免費，較慢）</b>：到 <a href="https://aistudio.google.com/apikey" target="_blank">aistudio.google.com/apikey</a> 建立。金鑰是 AQ. 或 AIza 開頭。尖峰時段常常太忙。</div>' +
+    '<input class="field sm" id="ai_key" placeholder="貼上金鑰（sk-ant-… 或 AQ.…）" autocomplete="off">' +
+    '<button class="btn block" onclick="saveAiKey()">儲存</button></div>' +
+    '<div class="grp-note">貼哪一家的金鑰就用哪一家。金鑰只存在你自己的 Apps Script 裡，不會出現在試算表或程式碼。</div>';
+}
+function keySheet() {
+  var ai = A.boot.ai || {};
+  return '<div class="grab"></div><div class="between"><div class="h2">截圖判讀</div><button class="link" onclick="closeSheet()">關閉</button></div>' +
+    (ai.set ? '<div class="small muted" style="margin-top:8px">目前用 <b>' + aiName(ai.provider) + '</b>（金鑰結尾 …' + esc(ai.tail) + '）。要換就貼新的；要停用按下面的「移除」。</div>' : '') + keyForm() +
+    (ai.set ? '<button class="btn danger block" style="margin-top:12px" onclick="saveAiKey(true)">移除金鑰</button>' : '');
+}
+function saveAiKey(remove) {
+  var k = remove ? '' : val('ai_key').trim();
+  if (!remove && !k) return toast('請先貼上金鑰', true);
+  var back = A.sheet && A.sheet.type === 'shot';
+  run('adminSaveAiKey', k).then(function (st) { A.boot.ai = st; toast(st.set ? '金鑰已儲存' : '已移除金鑰'); if (back) renderSheet(); else { closeSheet(); render(); } }).catch(fail);
+}
+function shotPick(input) {
+  var f = input.files && input.files[0]; if (!f) return;
+  var d = A.sheet.d; d.err = '';
+  var rd = new FileReader();
+  rd.onload = function () {
+    var im = new Image();
+    im.onload = function () {                         // 縮到長邊 1600，轉成 JPG，上傳比較快
+      var k = Math.min(1, 1600 / Math.max(im.width, im.height)), c = document.createElement('canvas');
+      c.width = Math.round(im.width * k); c.height = Math.round(im.height * k);
+      c.getContext('2d').drawImage(im, 0, 0, c.width, c.height);
+      d.img = c.toDataURL('image/jpeg', 0.85); d.b64 = d.img.split(',')[1]; renderSheet();
+    };
+    im.onerror = function () { d.err = '這張圖打不開，換一張試試'; renderSheet(); };
+    im.src = rd.result;
+  };
+  rd.readAsDataURL(f);
+}
+function shotRun() {
+  var d = A.sheet.d; if (!d.b64 || d.busy) return;
+  d.busy = true; d.err = ''; renderSheet();
+  run('adminParseImage', d.b64, 'image/jpeg').then(function (list) {
+    if (!A.sheet || A.sheet.type !== 'shot') return;
+    d.busy = false;
+    if (!list.length) { d.err = '這張截圖裡沒看到約好的時間。換一張，或改用一句話新增。'; return renderSheet(); }
+    var rows = list.map(function (x) {
+      var g = GCParser.parse(x.title + ' ' + (x.who || ''), new Date(), A.cfg.calendars, A.cfg.people || []);
+      return { title: x.title, who: x.who, date: x.date, endDate: x.date, s: x.s, e: x.e, allDay: x.allDay, loc: x.loc, note: x.note,
+        ok: true, use: true, sure: x.sure, cal: (A.cfg.calendars[g.calIndex] || A.cfg.calendars[0]).id };
+    });
+    openSheet('import', { text: '', rows: rows, weekly: GCParser.findWeekly(rows), merge: {}, bulkCal: '', fromShot: d });
+  }).catch(function (e) { d.busy = false; d.err = e.message; renderSheet(); });
+}
+
 function openImport() { openSheet('import', { text: '', rows: null, weekly: [], merge: {}, bulkCal: '' }); }
 function importSheet(d) {
   if (!d.rows) {
@@ -720,7 +813,8 @@ function importSheet(d) {
     return h;
   }
   var sel = d.rows.filter(function (r) { return r.use; }).length;
-  var h = sheetHead('<button class="link" style="text-decoration:none" onclick="A.sheet.d.rows=null;renderSheet()">‹ 修改</button>', '確認 ' + d.rows.length + ' 筆',
+  var h = sheetHead(d.fromShot ? '<button class="link" style="text-decoration:none" onclick="openSheet(\'shot\',A.sheet.d.fromShot)">‹ 換一張</button>'
+      : '<button class="link" style="text-decoration:none" onclick="A.sheet.d.rows=null;renderSheet()">‹ 修改</button>', '確認 ' + d.rows.length + ' 筆',
     '<button class="hbtn" ' + (sel ? '' : 'disabled') + ' onclick="doImport()">匯入 ' + sel + '</button>');
   d.weekly.forEach(function (w, i) {
     var on = !!d.merge[i];
@@ -738,7 +832,9 @@ function importSheet(d) {
     h += '<div class="imrow' + (r.use ? '' : ' off') + (merged ? ' merged' : '') + '" style="border-left:4px solid ' + (r.ok ? c.color : 'var(--danger)') + '">' +
       '<button class="tick' + (r.use ? ' on' : '') + '" aria-label="勾選" ' + (r.ok ? '' : 'disabled') + ' onclick="A.sheet.d.rows[' + i + '].use=!A.sheet.d.rows[' + i + '].use;renderSheet()"></button>' +
       '<div style="flex:1;min-width:0"><input class="iminput" value="' + esc(r.title) + '" onchange="A.sheet.d.rows[' + i + '].title=this.value">' +
-      '<div class="tiny" style="color:' + (r.ok ? 'var(--muted)' : 'var(--danger)') + '">' + t + (merged ? '・合併為每週重複' : '') + '</div></div>' +
+      '<div class="tiny" style="color:' + (r.ok ? 'var(--muted)' : 'var(--danger)') + '">' + t + (merged ? '・合併為每週重複' : '') +
+      (r.who ? '・' + esc(r.who) : '') + (r.loc ? '・' + esc(r.loc) : '') + (r.sure === false ? '・<span style="color:var(--warn)">還沒講定</span>' : '') + '</div>' +
+      (r.note ? '<div class="tiny faint">' + esc(r.note) + '</div>' : '') + '</div>' +
       '<select class="imcal" style="color:' + c.color + ';background:' + tint(c.color) + '" onchange="A.sheet.d.rows[' + i + '].cal=this.value;renderSheet()">' + A.cfg.calendars.map(function (x) { return '<option value="' + esc(x.id) + '"' + (x.id === r.cal ? ' selected' : '') + '>' + esc(x.name) + '</option>'; }).join('') + '</select></div>';
   });
   return h + '</div><div class="fnote" style="text-align:center;padding-top:10px">同一天、同時間、同標題已經有的行程會自動跳過</div>';
@@ -763,7 +859,7 @@ function doImport() {
   });
   d.rows.forEach(function (r, i) {
     if (!r.use || used[i] || !r.ok) return;
-    items.push({ cal: r.cal, title: r.title, who: r.who, date: r.date, endDate: r.endDate || r.date, s: r.s, e: r.e, allDay: r.allDay, loc: r.loc });
+    items.push({ cal: r.cal, title: r.title, who: r.who, date: r.date, endDate: r.endDate || r.date, s: r.s, e: r.e, allDay: r.allDay, loc: r.loc, note: r.note || '' });
   });
   closeSheet(); toast('匯入中…');
   run('adminImport', items).then(function (res) {
@@ -811,7 +907,7 @@ function vInbox() {
   });
   return h + '</div>';
 }
-function loadInbox() { run('adminInbox').then(function (l) { A.inbox = l; render(); }).catch(fail); }
+function loadInbox() { run('adminInbox').then(function (l) { A.inbox = l; if (!document.getElementById('boot')) render(); }).catch(fail); }
 function pendingN() { return A.inbox ? A.inbox.filter(function (x) { return x.status === '待處理' || x.status === '待審核'; }).length : 0; }
 function openInbox(i) {
   var x = A.refs[i], m = /(\d{4}) 年 (\d{1,2}) 月/.exec(x.when);
@@ -890,6 +986,7 @@ function linkOf(aud) {
 var SI = {
   plus: '<path d="M12 5v14M5 12h14"/>',
   home: '<path d="M4 11l8-6.5 8 6.5"/><path d="M6 9.5V19h12V9.5"/><path d="M10 19v-5h4v5"/>',
+  image: '<rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><circle cx="9" cy="10" r="1.8"/><path d="M20.5 16l-5-5-8.5 8.5"/>',
   friend: '<circle cx="9" cy="8" r="3.2"/><path d="M3.5 19c.6-3 2.8-4.6 5.5-4.6s4.9 1.6 5.5 4.6"/><circle cx="17" cy="9" r="2.4"/><path d="M16 14.6c2.4.1 4 1.5 4.5 4"/>',
   globe: '<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.4 2.4 3.5 5.3 3.5 8.5s-1.1 6.1-3.5 8.5c-2.4-2.4-3.5-5.3-3.5-8.5s1.1-6.1 3.5-8.5z"/>',
   eye: '<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.8"/>',
@@ -912,7 +1009,9 @@ function vSettings() {
       '<span class="sbody"><span class="stitle">' + esc(c.name) + '</span><span class="ssub">' + esc((c.keywords || []).join('、') || '沒有分類關鍵字') + '</span></span>' + chev() + '</button>';
   });
   h += '<button class="srow" onclick="editCal(-1)"><span class="sico add"><svg viewBox="0 0 24 24">' + SI.plus + '</svg></span><span class="sbody"><span class="stitle" style="color:var(--ink)">新增行事曆</span></span></button></div>';
-  h += '<div class="grp" style="margin-top:10px"><button class="srow" onclick="openFamily()">' + sico('home', '#b0714a') +
+  h += '<div class="grp" style="margin-top:10px"><button class="srow" onclick="openSheet(\'aikey\',{})">' + sico('image', '#4a8f7c') +
+    '<span class="sbody"><span class="stitle">截圖判讀</span><span class="ssub">' + (A.boot.ai && A.boot.ai.set ? aiName(A.boot.ai.provider) + '・…' + esc(A.boot.ai.tail) : '還沒設定，用來「從截圖新增」') + '</span></span>' + chev() + '</button>';
+  h += '<button class="srow" onclick="openFamily()">' + sico('home', '#b0714a') +
     '<span class="sbody"><span class="stitle">家庭日曆</span><span class="ssub">' + (cfg.familyCal ? esc(cfg.familyName) + '・勾「讓家人看到」的行程會放一份進去' : '還沒設定') + '</span></span>' + chev() + '</button></div>';
 
   var opt = function (sel) { return cfg.calendars.map(function (c) { return '<option value="' + esc(c.id) + '"' + (c.id === sel ? ' selected' : '') + '>' + esc(c.name) + '</option>'; }).join(''); };
@@ -1072,9 +1171,9 @@ function renderSheet() {
   var el = document.getElementById('sheet');
   if (!A.sheet) { el.innerHTML = ''; return; }
   var t = A.sheet.type, d = A.sheet.d;
-  var body = t === 'family' ? familySheet(d) : t === 'mnote' ? noteSheet(d) : t === 'new' ? evForm(d, true) : t === 'edit' ? evForm(d, false) : t === 'import' ? importSheet(d) : t === 'inbox' ? inboxForm(d) : t === 'link' ? linkSheet(d) : t === 'adv' ? advSheet() : t === 'home' ? homeSheet() : calForm(d);
+  var body = t === 'shot' ? shotSheet(d) : t === 'aikey' ? keySheet() : t === 'family' ? familySheet(d) : t === 'mnote' ? noteSheet(d) : t === 'new' ? evForm(d, true) : t === 'edit' ? evForm(d, false) : t === 'import' ? importSheet(d) : t === 'inbox' ? inboxForm(d) : t === 'link' ? linkSheet(d) : t === 'adv' ? advSheet() : t === 'home' ? homeSheet() : calForm(d);
   var sc = el.querySelector('.sheet'), top = sc ? sc.scrollTop : 0;
-  var full = t === 'new' || t === 'edit' || t === 'import';
+  var full = t === 'new' || t === 'edit' || t === 'import' || t === 'shot';
   el.innerHTML = '<div class="sheet-bg" onclick="if(event.target===this)closeSheet()"><div class="sheet' + (full ? ' full' : '') + '">' + body + '</div></div>';
   el.querySelector('.sheet').scrollTop = top;
   el.querySelectorAll('.notein').forEach(grow);
@@ -1116,10 +1215,21 @@ function tapDay(day) {
   render();
 }
 
-run('adminBoot').then(function (b) {
+/* 開頭：先放小動畫，本週的行程到了再一起顯示 */
+(function () {
+  var nm = document.getElementById('bootName'), num = document.getElementById('bootNum');
+  if (nm && BOOT.me && BOOT.me.name) nm.textContent = BOOT.me.name + ' 的行事曆';
+  var d = new Date().getDate(); if (num) num.textContent = d;
+  var t = setInterval(function () { if (!document.getElementById('bootNum')) return clearInterval(t); d = d % 31 + 1; num.textContent = d; }, 1100);
+})();
+function start(b) {
   A.boot = b; A.cfg = b.cfg; A.anchor = b.today; A.sel = b.today; A.wk = monday(b.today); A.board = b.board || []; A.boardSaved = JSON.stringify(A.board);
-  renderNav(); loadWeek(); loadInbox();
-}).catch(function (e) { document.getElementById('app').innerHTML = '<div class="card">' + esc(e.message) + '</div>'; });
+  var k = wkKey();
+  run('adminEvents', A.wk, addD(A.wk, 6)).then(function (list) { A.ev[k] = list; renderNav(); render(); }).catch(fail);
+  loadInbox();
+}
+if (BOOT.data) start(BOOT.data);          // 資料跟著頁面一起來，少等一輪
+else run('adminBoot').then(start).catch(function (e) { document.getElementById('app').innerHTML = '<div class="card">' + esc(e.message) + '</div>'; });
 </script>
 </body>
 </html>

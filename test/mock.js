@@ -18,7 +18,7 @@ function makeEnv(opts={}){
   let evId=0;
   const ctx={
     console, Math, Date, JSON, String, Number, Object, Array, RegExp, Error, parseInt, parseFloat, isNaN,
-    PropertiesService:{getScriptProperties:()=>({getProperty:k=>state.props[k]??null,setProperty:(k,v)=>{state.props[k]=v}})},
+    PropertiesService:{getScriptProperties:()=>({getProperty:k=>state.props[k]??null,setProperty:(k,v)=>{state.props[k]=v},deleteProperty:k=>{delete state.props[k]}})},
     CacheService:{getScriptCache:()=>({get:k=>state.cache[k]??null,put:(k,v)=>{state.cache[k]=v},remove:k=>delete state.cache[k]})},
     SpreadsheetApp:{create:()=>ss, openById:()=>ss},
     Session:{getActiveUser:()=>({getEmail:()=>state.activeUser}), getEffectiveUser:()=>({getEmail:()=>owner})},
@@ -28,7 +28,7 @@ function makeEnv(opts={}){
     Utilities:{
       formatDate:(d,tz,f)=>{const p=Object.fromEntries(new Intl.DateTimeFormat('en-CA',{timeZone:tz,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(d).map(x=>[x.type,x.value]));
         if(f==='yyyy-MM-dd')return `${p.year}-${p.month}-${p.day}`; if(f==='H')return String(+p.hour); if(f==='m')return String(+p.minute); if(f==='yyyy-MM-dd HH:mm')return `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute}`; throw f;},
-      getUuid:()=>'uuid-'+Math.random().toString(36).slice(2,10)+'-xxxx'},
+      getUuid:()=>'uuid-'+Math.random().toString(36).slice(2,10)+'-xxxx', sleep:()=>{}},
     CalendarApp:{getCalendarsByName:()=>[], createCalendar:(n,o)=>{const id='cal_'+n; state.cals[id]={n,o}; state.events[id]=[]; return {getId:()=>id}},
       getCalendarById:id=>({setName(n){state.cals[id].n=n},setColor(c){state.cals[id].o.color=c},deleteCalendar(){delete state.cals[id]}})},
     Calendar:{

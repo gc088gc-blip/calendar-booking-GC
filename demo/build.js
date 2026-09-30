@@ -13,11 +13,11 @@ function bootBackend() {
   var G = makeGoogle('me@example.com');
   var PropertiesService = G.PropertiesService, CacheService = G.CacheService, SpreadsheetApp = G.SpreadsheetApp, Session = G.Session,
       LockService = G.LockService, MailApp = G.MailApp, Logger = G.Logger, Utilities = G.Utilities, Calendar = G.Calendar,
-      CalendarApp = G.CalendarApp, ScriptApp = G.ScriptApp, HtmlService = G.HtmlService;
+      CalendarApp = G.CalendarApp, ScriptApp = G.ScriptApp, HtmlService = G.HtmlService, UrlFetchApp = G.UrlFetchApp;
 ${code}
   return { G: G, api: { ${names.map(n=>n+': '+n).join(', ')} } };
 }
-var TPL_ADMIN = ${js(expand(rd('Admin.html')).replace('<head>','<head>'+SHIM).replace('<?!= boot ?>','{"here":"https://script.google.com/macros/s/DEMO/exec?admin"}'))};
+var TPL_ADMIN = ${js(expand(rd('Admin.html')).replace('<head>','<head>'+SHIM))};
 var TPL_BOOK = ${js(expand(rd('Book.html')).replace('<head>','<head>'+SHIM))};
 var TPL_SHARE = ${js(expand(rd('Share.html')).replace('<head>','<head>'+SHIM))};
 `;

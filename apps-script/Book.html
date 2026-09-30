@@ -49,6 +49,15 @@
     textarea.finput { min-height: 76px; resize: vertical; line-height: 1.5; }
     .frow.top { align-items: flex-start; } .frow.top .fic { margin-top: 14px; }
     .ranges { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 16px 14px; }
+    .rg.taken { background: repeating-linear-gradient(135deg, #f1efea 0 6px, #e9e6df 6px 12px); color: var(--muted); text-decoration: line-through; text-decoration-color: rgba(0,0,0,.25); }
+    .rg.taken b { font-weight: 500; font-size: 12px; text-decoration: none; display: inline-block; }
+    .day .bkl { font-size: 9px; font-weight: 500; color: var(--muted); line-height: 1; white-space: nowrap; }
+    .day.ok .bkl, .day.online .bkl { color: #8a6a3c; }
+    .busyline { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); margin: 0 2px 10px; }
+    .busyline b { color: var(--ink); }
+    .busyline .ppl { display: inline-flex; }
+    .busyline .ppl i { width: 18px; height: 18px; border-radius: 9px; background: #e9e6df; border: 2px solid var(--bg); margin-left: -6px; }
+    .busyline .ppl i:first-child { margin-left: 0; }
     .rg { display: inline-flex; align-items: center; gap: 6px; background: #f6f5f2; border-radius: 10px; padding: 7px 10px; font-size: 14px; font-variant-numeric: tabular-nums; }
     .tsel { display: grid; grid-template-columns: 1fr auto 1fr; gap: 10px; align-items: end; padding: 12px 16px 16px; }
     .tsel label { display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: var(--muted); }
@@ -86,7 +95,7 @@ var PUB = BOOT.aud === 'public';
 var ME = (BOOT.me && BOOT.me.name) || '我', BRAND = (BOOT.me && BOOT.me.brand) || '', TAGLINE = (BOOT.me && BOOT.me.tagline) || '';
 document.body.classList.add(PUB ? 'public' : 'friend');
 var WDN = ['日', '一', '二', '三', '四', '五', '六'];
-var S = { view: 'month', ym: BOOT.today.slice(0, 7), cache: {}, loading: false, date: null, start: null, end: null, loc: 'both',
+var S = { bk: {}, view: 'month', ym: BOOT.today.slice(0, 7), cache: {}, loading: false, date: null, start: null, end: null, loc: 'both',
           f: { name: '', contact: '', purpose: '', locMode: 'online', place: '' }, month: null, mf: { dur: '', loc: '' }, sending: false, result: null };
 
 function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
@@ -113,7 +122,7 @@ var IC = {
 function loadMonth(ym, force) {
   if (S.cache[ym] && !force) return Promise.resolve(S.cache[ym]);
   S.loading = true; render();
-  return run('apiMonth', BOOT.aud, BOOT.k, ym).then(function (r) { S.cache[ym] = r.days; S.loading = false; render(); return r.days; })
+  return run('apiMonth', BOOT.aud, BOOT.k, ym).then(function (r) { S.cache[ym] = r.days; S.bk[ym] = r.booked || 0; S.loading = false; render(); return r.days; })
     .catch(function (e) { S.loading = false; render(); toast(e.message, true); });
 }
 function dayData(ymd) { var list = S.cache[ymd.slice(0, 7)] || []; for (var i = 0; i < list.length; i++) if (list[i].date === ymd) return list[i]; return null; }
@@ -167,6 +176,8 @@ function vMonth() {
     h += '<div class="small muted" style="margin-bottom:6px">' + (ym === minYm ? '最快可以約' : ymText(ym) + ' 可以約') + '</div><div class="quick">' + open.slice(0, 8).map(function (d) {
       return '<button class="qd" onclick="pickDay(\'' + d.date + '\')"><b>' + shortD(d.date) + '（' + WDN[dOf(d.date).getDay()] + '）</b><span>' + esc(rangeText(d).split('、')[0]) + (d.segs.length > 1 ? ' 等' : '') + '</span></button>'; }).join('') + '</div>';
   }
+  var nb = S.bk[ym] || 0;
+  if (days && nb) h += '<div class="busyline"><span class="ppl">' + '<i></i><i></i><i></i>'.slice(0, Math.min(nb, 3) * 7) + '</span><span>' + (+ym.slice(5)) + ' 月已經有 <b>' + nb + '</b> 位預約' + (nb >= 5 ? '，想約的話早點選' : '') + '</span></div>';
   h += '<div class="calcard"><div class="between" style="margin-bottom:10px"><div class="h2" style="padding-left:4px">' + ymText(ym) + '</div><div class="row" style="gap:6px">' +
     '<button class="arrow" aria-label="上個月" ' + (ym <= minYm ? 'disabled' : '') + ' onclick="nav(-1)">' + IC.left + '</button>' +
     '<button class="arrow" aria-label="下個月" ' + (ym >= maxYm ? 'disabled' : '') + ' onclick="nav(1)">' + IC.right + '</button></div></div>';
@@ -178,7 +189,8 @@ function vMonth() {
     for (var i = 0; i < lead; i++) h += '<div></div>';
     days.forEach(function (d) {
       var n = +d.date.slice(8), isOpen = d.state === 'ok' || d.state === 'online', cls = 'day ' + d.state + (d.date === BOOT.today ? ' today' : '');
-      var inner = '<span>' + n + '</span>' + holTag(d.date) + (isOpen ? '<div class="mk"></div>' : d.state === 'full' ? '<div class="tiny">滿</div>' : '');
+      var bkl = d.booked && d.state !== 'past' ? '<div class="bkl">已有' + d.booked + '人</div>' : '';
+      var inner = '<span>' + n + '</span>' + holTag(d.date) + (bkl || (isOpen ? '<div class="mk"></div>' : '')) + (d.state === 'full' ? '<div class="tiny">滿</div>' : '');
       h += isOpen ? '<button class="' + cls + '" onclick="pickDay(\'' + d.date + '\')">' + inner + '</button>' : '<div class="' + cls + '">' + inner + '</div>';
     });
     h += '</div>';
@@ -204,19 +216,22 @@ function endsFor(day, s) {
 function vSlots() {
   var day = dayData(S.date), starts = day ? startsFor(day) : [];
   var h = backRow('month', dtext(S.date) + ' ' + (GCCal.holiday(S.date) ? '<span style="color:#c0392b;font-size:13px">' + esc(GCCal.holiday(S.date)) + '</span>' : '')) + steps(2);
-  if (!starts.length) return h + '<div class="fcard" style="padding:18px;text-align:center" class="small muted">這天已經沒有空檔了，換一天看看。</div>';
+  if (!starts.length) return h + '<div class="fcard" style="padding:18px;text-align:center"><div class="small muted">這天已經約滿了，換一天看看。</div>' +
+    (day && day.taken ? '<div class="ranges" style="justify-content:center;padding-bottom:0">' + day.taken.map(function (t) { return '<span class="rg taken">' + hm(t.s) + '–' + hm(t.e) + ' <b>已有人預約</b></span>'; }).join('') + '</div>' : '') + '</div>';
   if (S.start == null || starts.indexOf(S.start) < 0) S.start = starts[0];
   var ends = endsFor(day, S.start);
   if (!ends.some(function (x) { return x.e === S.end; })) S.end = (ends.filter(function (x) { return x.e === S.start + 60; })[0] || ends[0]).e;
   var loc = cover(day.segs, S.start, S.end);
   h += '<div class="fcard"><div class="fhead">' + esc(ME) + ' 這天有空</div><div class="ranges">' + day.segs.map(function (p) {
-    return '<span class="rg">' + hm(p.s) + '–' + hm(p.e) + ' <span class="tag ' + (p.loc === 'online' ? 'online' : 'both') + '">' + (p.loc === 'online' ? '僅線上' : '線上/實體') + '</span></span>'; }).join('') + '</div></div>';
+    return '<span class="rg">' + hm(p.s) + '–' + hm(p.e) + ' <span class="tag ' + (p.loc === 'online' ? 'online' : 'both') + '">' + (p.loc === 'online' ? '僅線上' : '線上/實體') + '</span></span>'; }).join('') + '</div>' +
+    (day.taken && day.taken.length ? '<div class="fhead" style="padding-top:0">已經有人預約</div><div class="ranges">' + day.taken.map(function (t) {
+      return '<span class="rg taken">' + hm(t.s) + '–' + hm(t.e) + ' <b>已有人預約</b></span>'; }).join('') + '</div>' : '') + '</div>';
   h += '<div class="fcard"><div class="fhead">你想約幾點到幾點</div><div class="tsel">' +
     '<label>開始<select id="s_start" onchange="setStart(+this.value)">' + starts.map(function (t) { return '<option value="' + t + '"' + (t === S.start ? ' selected' : '') + '>' + hm(t) + '</option>'; }).join('') + '</select></label>' +
     '<span style="padding-bottom:16px;color:var(--faint)">–</span>' +
     '<label>結束<select id="s_end" onchange="setEnd(+this.value)">' + ends.map(function (x) { return '<option value="' + x.e + '"' + (x.e === S.end ? ' selected' : '') + '>' + hm(x.e) + '</option>'; }).join('') + '</select></label></div>' +
     '<div class="tsum"><span>共 ' + durText(S.end - S.start) + '</span><span class="tag ' + (loc === 'online' ? 'online' : 'both') + '">' + (loc === 'online' ? '僅線上' : '線上或' + (PUB ? '台北' : '') + '實體') + '</span></div></div>';
-  h += '<div class="small faint" style="margin-top:10px;text-align:center">' + esc(ME) + ' 在忙什麼</div>';
+  h += '<div class="small faint" style="margin-top:10px;text-align:center">只看得到空檔，看不到 ' + esc(ME) + ' 在忙什麼</div>';
   h += '<div class="bar"><button class="btn" onclick="toForm()">下一步 · ' + dtext(S.date) + hm(S.start) + '–' + hm(S.end) + '</button></div>';
   return h;
 }
@@ -338,9 +353,9 @@ function submitMonth() {
     .catch(function (e) { S.sending = false; render(); toast(e.message, true); });
 }
 render();
-if (BOOT.first && BOOT.first.ym === S.ym) { S.cache[S.ym] = BOOT.first.days; render(); }
+if (BOOT.first && BOOT.first.ym === S.ym) { S.cache[S.ym] = BOOT.first.days; S.bk[S.ym] = BOOT.first.booked || 0; render(); }
 else loadMonth(S.ym);
-setTimeout(function () { var n = ymAdd(S.ym, 1); if (n <= BOOT.rangeEnd.slice(0, 7) && !S.cache[n]) run('apiMonth', BOOT.aud, BOOT.k, n).then(function (r) { S.cache[n] = r.days; if (S.view === 'month') render(); }).catch(function () {}); }, 400);   // 先載下個月，切換更快
+setTimeout(function () { var n = ymAdd(S.ym, 1); if (n <= BOOT.rangeEnd.slice(0, 7) && !S.cache[n]) run('apiMonth', BOOT.aud, BOOT.k, n).then(function (r) { S.cache[n] = r.days; S.bk[n] = r.booked || 0; if (S.view === 'month') render(); }).catch(function () {}); }, 400);   // 先載下個月，切換更快
 </script>
 </body>
 </html>
